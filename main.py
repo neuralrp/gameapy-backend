@@ -16,7 +16,11 @@ app = FastAPI(
 # Configure CORS for Flutter development
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=[
+        "http://localhost:5173",          # Local dev (default Vite)
+        "http://localhost:5176",          # Local dev (current port)
+        "https://gameapy.vercel.app",     # Production Vercel URL
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
