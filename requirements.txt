@@ -1,0 +1,36 @@
+# Backend Dependencies
+
+# FastAPI and ASGI server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# Database and search
+# sqlite3 is built-in to Python
+sqlite-vec==0.1.1
+
+# HTTP client for LLM APIs
+httpx==0.25.2
+
+# Data validation
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# OpenAI SDK for OpenRouter compatibility
+openai==1.3.5
+
+# Machine learning for embeddings
+sentence-transformers==2.2.2
+torch>=2.6.0
+
+# Utilities
+python-dotenv==1.0.0
+python-multipart==0.0.6
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+
+# Development tools
+black==23.11.0
+ruff==0.1.7
