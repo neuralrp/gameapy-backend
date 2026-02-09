@@ -4,8 +4,8 @@ import json
 import asyncio
 
 from app.models.schemas import (
-    ClientProfile, CounselorProfile, Message, MessageCreate, 
-    SessionCreate, SessionWithMessages, APIResponse,
+    ClientProfile, CounselorProfile, Message, MessageCreate,
+    SessionCreate, SessionWithMessages, APIResponse, ChatRequest,
     CharacterCard, CharacterCardCreate,
     GameState, FarmItem, FarmItemCreate, FarmShopResponse,
     ShopItem, HealthResponse
@@ -101,14 +101,13 @@ def _build_counselor_system_prompt(counselor_data: Dict) -> str:
 
 
 @router.post("/chat", response_model=APIResponse)
-async def chat_with_counselor(
-    session_id: int,
-    message_data: MessageCreate
-):
+async def chat_with_counselor(request: ChatRequest):
     """
     Chat with a counselor character and get AI response.
     """
     try:
+        session_id = request.session_id
+        message_data = request.message_data
         # Get session details
         session = db.get_session(session_id)
         if not session:
@@ -213,14 +212,13 @@ async def chat_with_counselor(
 
 
 @router.post("/chat/stream")
-async def chat_with_counselor_stream(
-    session_id: int,
-    message_data: MessageCreate
-):
+async def chat_with_counselor_stream(request: ChatRequest):
     """
     Stream chat response from counselor.
     """
     try:
+        session_id = request.session_id
+        message_data = request.message_data
         # Get session details first
         session = db.get_session(session_id)
         if not session:

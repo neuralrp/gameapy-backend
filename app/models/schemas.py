@@ -101,6 +101,9 @@ class MessageCreate(BaseModel):
     content: str
     speaker: Optional[str] = None
 
+class ChatRequest(BaseModel):
+    session_id: int
+    message_data: MessageCreate
 
 class Message(BaseModelResponse):
     session_id: int
