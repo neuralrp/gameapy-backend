@@ -19,7 +19,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",          # Local dev (default Vite)
         "http://localhost:5176",          # Local dev (current port)
-        "https://gameapy.vercel.app",     # Production Vercel URL
+        "https://gameapy-web.vercel.app", # Production Vercel URL
     ],
     allow_credentials=True,
     allow_methods=["*"],
