@@ -21,8 +21,8 @@ class Database:
             conn.close()
             self.vector_support = True
             print("[OK] sqlite-vec loaded: Vector embeddings enabled")
-        except (ImportError, sqlite3.OperationalError):
-            print("[WARN] sqlite-vec not available: Using keyword-only search")
+        except (ImportError, sqlite3.OperationalError) as e:
+            print(f"[WARN] sqlite-vec not available: Using keyword-only search ({e})")
 
         self._ensure_schema()
         self._run_auto_migrations()
