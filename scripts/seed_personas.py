@@ -105,20 +105,27 @@ def seed_personas(db, personas):
         'failed': []
     }
     
+    print(f"\n[INFO] Starting seed process for {len(personas)} personas")
+    print(f"[INFO] Database path: {db.db_path}")
+    
     for persona_info in personas:
         filepath = persona_info['filepath']
         profile_data = persona_info['data']
         
         try:
             name = profile_data['data']['name']
+            print(f"\n[INFO] Processing: {name}")
             
             # Validate
             validate_persona(profile_data)
+            print(f"[INFO]   Validation passed")
             
             # Check if exists
             existing_id = get_counselor_by_name(db, name)
+            print(f"[INFO]   Existing ID: {existing_id}")
             
             if existing_id:
+                print(f"[INFO]   Deleting old version (ID: {existing_id})")
                 # Delete old version
                 with db._get_connection() as conn:
                     conn.execute(
@@ -126,16 +133,24 @@ def seed_personas(db, personas):
                         (existing_id,)
                     )
                     conn.commit()
+                print(f"[INFO]   Deleted successfully")
                 
                 # Insert new version
+                print(f"[INFO]   Inserting new version...")
                 profile_id = db.create_counselor_profile(profile_data)
+                print(f"[INFO]   Created with ID: {profile_id}")
                 summary['updated'].append(name)
             else:
+                print(f"[INFO]   Inserting new counselor...")
                 # Insert new
                 profile_id = db.create_counselor_profile(profile_data)
+                print(f"[INFO]   Created with ID: {profile_id}")
                 summary['created'].append(name)
             
         except Exception as e:
+            print(f"[ERROR] Failed to process {profile_data.get('data', {}).get('name', 'Unknown')}: {e}")
+            import traceback
+            traceback.print_exc()
             summary['failed'].append({
                 'name': profile_data['data'].get('name', 'Unknown'),
                 'file': filepath.name,
