@@ -178,7 +178,7 @@ async def chat_with_counselor(request: ChatRequest):
         response = await simple_llm_client.chat_completion(
             messages=llm_messages,
             temperature=0.7,
-            max_tokens=500
+            max_tokens=2000
         )
         
         choices = response.get('choices', [])
@@ -266,7 +266,7 @@ async def chat_with_counselor_stream(request: ChatRequest):
             response = await simple_llm_client.chat_completion(
                 messages=llm_messages,
                 temperature=0.7,
-                max_tokens=500
+                max_tokens=2000
             )
             
             choices = response.get('choices', [])

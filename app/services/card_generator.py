@@ -55,7 +55,7 @@ class CardGenerator:
                     messages=[{"role": "system", "content": prompt}],
                     model=model,
                     temperature=0.7,
-                    max_tokens=2000
+                    max_tokens=4000
                 )
 
                 duration_ms = int((time.time() - start_time) * 1000)

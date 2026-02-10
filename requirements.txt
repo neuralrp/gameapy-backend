@@ -6,7 +6,7 @@ uvicorn[standard]==0.24.0
 
 # Database and search
 # sqlite3 is built-in to Python
-sqlite-vec==0.1.1
+# Keyword-only search (no vector embeddings - pivot v3.1 design decision)
 
 # HTTP client for LLM APIs
 httpx==0.25.2

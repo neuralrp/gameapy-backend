@@ -13,16 +13,9 @@ class Database:
         self.db_path = db_path
         self.vector_support = False
 
-        # Try to load sqlite-vec
-        try:
-            conn = sqlite3.connect(db_path)
-            conn.enable_load_extension(True)
-            conn.execute("SELECT load_extension('sqlite_vec')")
-            conn.close()
-            self.vector_support = True
-            print("[OK] sqlite-vec loaded: Vector embeddings enabled")
-        except (ImportError, sqlite3.OperationalError) as e:
-            print(f"[WARN] sqlite-vec not available: Using keyword-only search ({e})")
+        # Keyword-only search (no vector embeddings - pivot v3.1 design decision)
+        self.vector_support = False
+        print("[OK] Keyword-only search enabled (fast, simple matching)")
 
         self._ensure_schema()
         self._run_auto_migrations()
@@ -55,14 +48,6 @@ class Database:
             clean_schema = '\n'.join(lines)
             
             conn.executescript(clean_schema)
-            
-            # Enable sqlite-vec extension
-            conn.enable_load_extension(True)
-            try:
-                conn.execute("SELECT load_extension('sqlite_vec')")
-            except sqlite3.OperationalError:
-                # sqlite-vec not available, will use regular search
-                pass
     
     def _run_auto_migrations(self):
         """Run automatic migrations on startup."""

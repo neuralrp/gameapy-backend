@@ -18,10 +18,12 @@ class TestChatEndpoint:
         """POST /chat, verify response + cards_loaded count."""
         response = test_client.post(
             f"/api/v1/chat/chat",
-            params={"session_id": sample_session},
             json={
-                "role": "user",
-                "content": "Hello, how are you?"
+                "session_id": sample_session,
+                "message_data": {
+                    "role": "user",
+                    "content": "Hello, how are you?"
+                }
             }
         )
         
@@ -37,10 +39,12 @@ class TestChatEndpoint:
         """Verify entity_detector mentions logged."""
         response = test_client.post(
             f"/api/v1/chat/chat",
-            params={"session_id": sample_session},
             json={
-                "role": "user",
-                "content": "My mom is nagging me"
+                "session_id": sample_session,
+                "message_data": {
+                    "role": "user",
+                    "content": "My mom is nagging me"
+                }
             }
         )
         
@@ -61,10 +65,12 @@ class TestChatEndpoint:
         """Verify context_assembler called with correct params."""
         response = test_client.post(
             f"/api/v1/chat/chat",
-            params={"session_id": sample_session},
             json={
-                "role": "user",
-                "content": "How are you?"
+                "session_id": sample_session,
+                "message_data": {
+                    "role": "user",
+                    "content": "How are you?"
+                }
             }
         )
         
@@ -78,10 +84,12 @@ class TestChatEndpoint:
         """404 for invalid session_id."""
         response = test_client.post(
             "/api/v1/chat/chat",
-            params={"session_id": 99999},
             json={
-                "role": "user",
-                "content": "Hello"
+                "session_id": 99999,
+                "message_data": {
+                    "role": "user",
+                    "content": "Hello"
+                }
             }
         )
         
@@ -97,10 +105,12 @@ class TestChatEntityMentions:
         """Verify add_entity_mention called."""
         response = test_client.post(
             f"/api/v1/chat/chat",
-            params={"session_id": sample_session},
             json={
-                "role": "user",
-                "content": "My mom is here"
+                "session_id": sample_session,
+                "message_data": {
+                    "role": "user",
+                    "content": "My mom is here"
+                }
             }
         )
         
@@ -120,10 +130,12 @@ class TestChatEntityMentions:
         """Multiple entities in one message logged separately."""
         response = test_client.post(
             f"/api/v1/chat/chat",
-            params={"session_id": sample_session},
             json={
-                "role": "user",
-                "content": "My mom graduated from college"
+                "session_id": sample_session,
+                "message_data": {
+                    "role": "user",
+                    "content": "My mom graduated from college"
+                }
             }
         )
         
