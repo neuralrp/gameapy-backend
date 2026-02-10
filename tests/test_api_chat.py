@@ -160,13 +160,15 @@ class TestChatContextAssembly:
         """Self card always loaded."""
         response = test_client.post(
             f"/api/v1/chat/chat",
-            params={"session_id": sample_session},
             json={
-                "role": "user",
-                "content": "Hello"
+                "session_id": sample_session,
+                "message_data": {
+                    "role": "user",
+                    "content": "Hello"
+                }
             }
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data['data']['cards_loaded'] >= 1
@@ -175,16 +177,18 @@ class TestChatContextAssembly:
     def test_context_includes_pinned_cards(self, test_client, sample_session, sample_self_card, sample_character_card, mock_llm_success):
         """Pinned cards loaded."""
         db.pin_card('character', sample_character_card)
-        
+
         response = test_client.post(
             f"/api/v1/chat/chat",
-            params={"session_id": sample_session},
             json={
-                "role": "user",
-                "content": "Hello"
+                "session_id": sample_session,
+                "message_data": {
+                    "role": "user",
+                    "content": "Hello"
+                }
             }
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data['data']['cards_loaded'] >= 1
@@ -194,13 +198,15 @@ class TestChatContextAssembly:
         """Current session mentions loaded."""
         response = test_client.post(
             f"/api/v1/chat/chat",
-            params={"session_id": sample_session},
             json={
-                "role": "user",
-                "content": "My mom is here"
+                "session_id": sample_session,
+                "message_data": {
+                    "role": "user",
+                    "content": "My mom is here"
+                }
             }
         )
-        
+
         assert response.status_code == 200
         mentions = db.get_entity_mentions_by_session(sample_session)
         assert len(mentions) > 0
@@ -210,13 +216,15 @@ class TestChatContextAssembly:
         """Verify cards_loaded in response."""
         response = test_client.post(
             f"/api/v1/chat/chat",
-            params={"session_id": sample_session},
             json={
-                "role": "user",
-                "content": "Hello"
+                "session_id": sample_session,
+                "message_data": {
+                    "role": "user",
+                    "content": "Hello"
+                }
             }
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert 'cards_loaded' in data['data']
@@ -232,12 +240,14 @@ class TestChatStreaming:
         """Streaming endpoint wired, returns 200, basic error handling."""
         response = test_client.post(
             f"/api/v1/chat/chat/stream",
-            params={"session_id": sample_session},
             json={
-                "role": "user",
-                "content": "Hello"
+                "session_id": sample_session,
+                "message_data": {
+                    "role": "user",
+                    "content": "Hello"
+                }
             }
         )
-        
+
         assert response.status_code == 200
         assert response.headers.get('content-type') is not None

@@ -7,6 +7,19 @@ from app.api.cards import router as cards_router
 from app.api.guide import router as guide_router
 from app.api.session_analyzer import router as session_analyzer_router
 
+# Run migrations on startup
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+from migrations.run_migrations import run_all_migrations
+
+# Execute migrations before starting the app
+run_all_migrations()
+
+# Auto-seed personas if none exist
+from utils.seed_personas_auto import ensure_personas_sealed
+ensure_personas_sealed()
+
 app = FastAPI(
     title="Gameapy API",
     description="Retro Therapeutic Storytelling App Backend",

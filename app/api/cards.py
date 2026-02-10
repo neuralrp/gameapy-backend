@@ -104,6 +104,7 @@ async def save_card(request: CardSaveRequest) -> APIResponse:
                 client_id=request.client_id,
                 card_name=request.card_data["name"],
                 relationship_type=request.card_data["relationship_type"],
+                relationship_label=request.card_data.get("relationship_label"),
                 card_data=request.card_data
             )
         elif request.card_type == "world":
@@ -182,6 +183,8 @@ async def update_card(card_id: int, request: CardUpdateRequest) -> APIResponse:
                 update_kwargs['card_name'] = request.card_name
             if request.relationship_type is not None:
                 update_kwargs['relationship_type'] = request.relationship_type
+            if request.relationship_label is not None:
+                update_kwargs['relationship_label'] = request.relationship_label
             if request.card_data is not None:
                 update_kwargs['card_json'] = json.dumps(request.card_data)
 

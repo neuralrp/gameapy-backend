@@ -311,29 +311,31 @@ class Database:
         client_id: int,
         card_name: str,
         relationship_type: str,
-        card_data: Dict[str, Any]
+        card_data: Dict[str, Any],
+        relationship_label: Optional[str] = None
     ) -> int:
         """Create a new character card."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            
+
             cursor.execute("""
-                INSERT INTO character_cards (client_id, card_name, relationship_type, card_json)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO character_cards (client_id, card_name, relationship_type, relationship_label, card_json)
+                VALUES (?, ?, ?, ?, ?)
             """, (
                 client_id,
                 card_name,
                 relationship_type,
+                relationship_label,
                 json.dumps(card_data)
             ))
 
             card_id = cursor.lastrowid
             if card_id is None:
                 raise Exception("Failed to create character card")
-            
+
             # Log creation
             self._log_change(conn, 'character_card', card_id, 'created', None, card_data)
-            
+
             return card_id
 
     def get_character_cards(self, client_id: int) -> List[Dict]:
@@ -341,7 +343,7 @@ class Database:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT id, card_name, relationship_type, card_json, auto_update_enabled, last_updated, created_at, is_pinned
+                SELECT id, card_name, relationship_type, relationship_label, card_json, auto_update_enabled, last_updated, created_at, is_pinned
                 FROM character_cards
                 WHERE client_id = ?
                 ORDER BY card_name
@@ -352,11 +354,12 @@ class Database:
                     'id': row[0],
                     'card_name': row[1],
                     'relationship_type': row[2],
-                    'card': json.loads(row[3]),
-                    'auto_update_enabled': row[4],
-                    'last_updated': row[5],
-                    'created_at': row[6],
-                    'is_pinned': row[7]
+                    'relationship_label': row[3],
+                    'card': json.loads(row[4]),
+                    'auto_update_enabled': row[5],
+                    'last_updated': row[6],
+                    'created_at': row[7],
+                    'is_pinned': row[8]
                 }
                 for row in cursor.fetchall()
             ]
@@ -365,9 +368,9 @@ class Database:
         """
         Update a character card with partial field updates.
 
-        Allowed fields: card_name, relationship_type, card_json
+        Allowed fields: card_name, relationship_type, relationship_label, card_json
         """
-        allowed_fields = ['card_name', 'relationship_type', 'card_json', 'changed_by']
+        allowed_fields = ['card_name', 'relationship_type', 'relationship_label', 'card_json', 'changed_by']
         updates = {k: v for k, v in kwargs.items() if k in allowed_fields and k != 'changed_by'}
         changed_by = kwargs.get('changed_by', 'system')
 
@@ -674,20 +677,23 @@ class Database:
             
             # Character cards
             cursor = conn.execute("""
-                SELECT id, card_name, card_json, auto_update_enabled, created_at, last_updated 
-                FROM character_cards 
+                SELECT id, card_name, relationship_label, card_json, auto_update_enabled, created_at, last_updated
+                FROM character_cards
                 WHERE client_id = ? AND is_pinned = TRUE
             """, (client_id,))
             for row in cursor.fetchall():
-                card_json = json.loads(row[2])
+                card_json = json.loads(row[3])
+                payload = {**card_json, 'name': row[1]}
+                if row[2]:
+                    payload['relationship_label'] = row[2]
                 pinned.append({
                     'id': row[0],
                     'card_type': 'character',
-                    'payload': {**card_json, 'name': row[1]},
-                    'auto_update_enabled': row[3],
+                    'payload': payload,
+                    'auto_update_enabled': row[4],
                     'is_pinned': True,
-                    'created_at': row[4],
-                    'updated_at': row[5]
+                    'created_at': row[5],
+                    'updated_at': row[6]
                 })
             
             # World events (Life Events)
@@ -994,7 +1000,7 @@ class Database:
                         })
 
             if 'character' in search_types:
-                sql = "SELECT id, 'character' as card_type, card_name, card_json, auto_update_enabled, created_at, last_updated FROM character_cards"
+                sql = "SELECT id, 'character' as card_type, card_name, relationship_label, card_json, auto_update_enabled, created_at, last_updated FROM character_cards"
                 params = []
                 if client_id:
                     sql += " WHERE client_id = ?"
@@ -1009,11 +1015,14 @@ class Database:
 
                 cursor = conn.execute(sql, params)
                 for row in cursor.fetchall():
-                    card_json = row[3] if isinstance(row[3], dict) else json.loads(row[3])
+                    card_json = row[4] if isinstance(row[4], dict) else json.loads(row[4])
+                    payload = {**card_json, 'name': row[2]}
+                    if row[3]:
+                        payload['relationship_label'] = row[3]
                     results.append({
                         'id': row[0],
                         'card_type': row[1],
-                        'payload': {**card_json, 'name': row[2]},
+                        'payload': payload,
                         'relevance': 1.0
                     })
 

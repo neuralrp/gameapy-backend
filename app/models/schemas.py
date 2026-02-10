@@ -134,6 +134,7 @@ class SessionWithMessages(Session):
 class CharacterCardCreate(BaseModel):
     card_name: str
     relationship_type: RelationshipType
+    relationship_label: Optional[str] = None
     card_data: Dict[str, Any]
 
 
@@ -382,6 +383,7 @@ class CardUpdateRequest(BaseModel):
     card_json: Optional[str] = None
     card_name: Optional[str] = None
     relationship_type: Optional[str] = None
+    relationship_label: Optional[str] = None
     card_data: Optional[Dict[str, Any]] = None
     title: Optional[str] = None
     key_array: Optional[str] = None

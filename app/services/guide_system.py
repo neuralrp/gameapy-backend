@@ -167,6 +167,7 @@ class GuideSystem:
                 client_id=client_id,
                 card_name=char_data["name"],
                 relationship_type=char_data["relationship_type"],
+                relationship_label=char_data.get("relationship_label"),
                 card_data=char_data
             )
             card_name = char_data["name"]

@@ -111,7 +111,7 @@ def _run_test_db_migration(db_instance):
     with db_instance._get_connection() as conn:
         cursor = conn.cursor()
         
-        # Check if is_pinned exists for each table
+        # Check if is_pinned and relationship_label exist for each table
         for table in ['self_cards', 'character_cards', 'world_events']:
             try:
                 cursor.execute(f"PRAGMA table_info({table})")
@@ -119,6 +119,10 @@ def _run_test_db_migration(db_instance):
                 if 'is_pinned' not in columns:
                     # Add is_pinned column
                     cursor.execute(f"ALTER TABLE {table} ADD COLUMN is_pinned BOOLEAN DEFAULT FALSE")
+                    conn.commit()  # Explicit commit
+                if table == 'character_cards' and 'relationship_label' not in columns:
+                    # Add relationship_label column to character_cards
+                    cursor.execute("ALTER TABLE character_cards ADD COLUMN relationship_label TEXT")
                     conn.commit()  # Explicit commit
             except sqlite3.OperationalError as e:
                 if 'no such table' in str(e):

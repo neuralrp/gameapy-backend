@@ -44,11 +44,16 @@ class TestE2EOnboarding:
         
         self_card = db.get_self_card(client_id)
         assert self_card is not None
-        
+
         chat_response = test_client.post(
             f"/api/v1/chat/chat",
-            params={"session_id": session_id},
-            json={"role": "user", "content": "Hello"}
+            json={
+                "session_id": session_id,
+                "message_data": {
+                    "role": "user",
+                    "content": "Hello"
+                }
+            }
         )
         assert chat_response.status_code == 200
         data = chat_response.json()
@@ -84,11 +89,16 @@ class TestE2ECardSuggestionPin:
         
         pin_response = test_client.put(f"/api/v1/cards/character/{card_id}/pin")
         assert pin_response.status_code == 200
-        
+
         chat_response = test_client.post(
             f"/api/v1/chat/chat",
-            params={"session_id": session_id},
-            json={"role": "user", "content": "Hello"}
+            json={
+                "session_id": session_id,
+                "message_data": {
+                    "role": "user",
+                    "content": "Hello"
+                }
+            }
         )
         assert chat_response.status_code == 200
         data = chat_response.json()
@@ -116,18 +126,23 @@ class TestE2EMultiSessionTracking:
                 counselor_id=sample_counselor
             )
             session_ids.append(session_id)
-            
+
             test_client.post(
                 f"/api/v1/chat/chat",
-                params={"session_id": session_id},
-                json={"role": "user", "content": "My mom is here"}
+                json={
+                    "session_id": session_id,
+                    "message_data": {
+                        "role": "user",
+                        "content": "My mom is here"
+                    }
+                }
             )
-        
+
         total_mentions = 0
         for session_id in session_ids:
             mentions = db.get_entity_mentions_by_session(session_id)
             total_mentions += len(mentions)
-        
+
         assert total_mentions >= 3
 
 
@@ -158,11 +173,16 @@ class TestE2EWorldEventCreation:
         assert len(world_events) > 0
         
         db.pin_card('world', world_events[0]['id'])
-        
+
         chat_response = test_client.post(
             f"/api/v1/chat/chat",
-            params={"session_id": session_id},
-            json={"role": "user", "content": "Hello"}
+            json={
+                "session_id": session_id,
+                "message_data": {
+                    "role": "user",
+                    "content": "Hello"
+                }
+            }
         )
         assert chat_response.status_code == 200
         data = chat_response.json()

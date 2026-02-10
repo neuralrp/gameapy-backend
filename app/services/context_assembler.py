@@ -213,10 +213,13 @@ class ContextAssembler:
                 char_cards = db.get_character_cards(client_id)
                 for card in char_cards:
                     if card['id'] == card_id:
+                        payload = {**card['card'], 'name': card['card_name']}
+                        if card.get('relationship_label'):
+                            payload['relationship_label'] = card['relationship_label']
                         return {
                             'id': card['id'],
                             'card_type': 'character',
-                            'payload': {**card['card'], 'name': card['card_name']},
+                            'payload': payload,
                             'auto_update_enabled': card.get('auto_update_enabled', True),
                             'is_pinned': card.get('is_pinned', False)
                         }

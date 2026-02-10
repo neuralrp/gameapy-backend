@@ -300,10 +300,13 @@ async def get_all_cards(
             })
 
         for card in character_cards:
+            payload = {**card['card'], 'name': card['card_name']}
+            if card.get('relationship_label'):
+                payload['relationship_label'] = card['relationship_label']
             all_cards.append({
                 'id': card['id'],
                 'card_type': 'character',
-                'payload': {**card['card'], 'name': card['card_name']},
+                'payload': payload,
                 'auto_update_enabled': card['auto_update_enabled'],
                 'is_pinned': card['is_pinned'],
                 'created_at': card['created_at'],

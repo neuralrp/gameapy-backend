@@ -39,26 +39,29 @@ async def test_simple_llm_client():
 
 
 @pytest.mark.asyncio
-async def test_chat_with_counselor(test_client):
+async def test_chat_with_counselor(test_client, sample_client, sample_counselor, mock_llm_success):
     """Test chat endpoint through FastAPI."""
-    
+
     # Create a session first
     session_response = test_client.post(
         "/api/v1/sessions",
-        json={"client_id": 1, "counselor_id": 1}
+        json={"client_id": sample_client, "counselor_id": sample_counselor}
     )
     session_data = session_response.json()
     session_id = session_data["data"]["session_id"]
-    
+
     # Send a message
     response = test_client.post(
-        f"/api/v1/chat/chat?session_id={session_id}",
+        f"/api/v1/chat/chat",
         json={
-            "role": "user",
-            "content": "I'm feeling stressed about work"
+            "session_id": session_id,
+            "message_data": {
+                "role": "user",
+                "content": "I'm feeling stressed about work"
+            }
         }
     )
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["success"] is True
@@ -67,13 +70,13 @@ async def test_chat_with_counselor(test_client):
 
 
 @pytest.mark.asyncio
-async def test_insight_extraction(test_client):
+async def test_insight_extraction(test_client, sample_client, sample_counselor):
     """Test insight extraction endpoint."""
-    
+
     # Create a session first
     session_response = test_client.post(
         "/api/v1/sessions",
-        json={"client_id": 1, "counselor_id": 1}
+        json={"client_id": sample_client, "counselor_id": sample_counselor}
     )
     session_data = session_response.json()
     session_id = session_data["data"]["session_id"]

@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS counselor_profiles (
     profile_json TEXT NOT NULL,  -- JSON: clinical approach, examples, protocols
     tags TEXT,  -- JSON array: ["sports", "wisdom", "mythology", "ocean"]
     is_active BOOLEAN DEFAULT TRUE,
+    is_hidden BOOLEAN DEFAULT FALSE,  -- Easter egg counselors (e.g., Deirdre)
     deleted_at TIMESTAMP
 );
 
@@ -81,8 +82,15 @@ CREATE TABLE IF NOT EXISTS character_cards (
     client_id INTEGER NOT NULL,
     card_name TEXT NOT NULL,  -- "Mom", "Best Friend John"
     relationship_type TEXT NOT NULL,  -- "family", "friend", "coworker"
+    relationship_label TEXT,  -- Custom label for specific matching (e.g., "Sister", "Mother")
     card_json TEXT NOT NULL,  -- JSON: personality, traits, conversation summary
     auto_update_enabled BOOLEAN DEFAULT TRUE,
+    is_pinned BOOLEAN DEFAULT FALSE,  -- Always load in context
+    entity_id TEXT,  -- Unique identifier for entity tracking
+    mention_count INTEGER DEFAULT 0,  -- Number of times mentioned
+    last_mentioned TIMESTAMP,  -- Last time this card was mentioned
+    first_mentioned TIMESTAMP,  -- First time this card was mentioned
+    vector_embedding BLOB,  -- Reserved for future vector search (migration 001)
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (client_id) REFERENCES client_profiles(id)
@@ -157,6 +165,9 @@ CREATE INDEX IF NOT EXISTS idx_progress_tracking_client_counselor ON progress_tr
 CREATE INDEX IF NOT EXISTS idx_change_log_entity ON change_log(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_session_insights_status ON session_insights(status);
 CREATE INDEX IF NOT EXISTS idx_character_cards_client ON character_cards(client_id);
+CREATE INDEX IF NOT EXISTS idx_character_cards_entity ON character_cards(entity_id);
+CREATE INDEX IF NOT EXISTS idx_character_cards_auto_update ON character_cards(auto_update_enabled);
+CREATE INDEX IF NOT EXISTS idx_character_cards_mentions ON character_cards(mention_count DESC);
 CREATE INDEX IF NOT EXISTS idx_game_state_client ON game_state(client_id);
 CREATE INDEX IF NOT EXISTS idx_farm_items_client ON farm_items(client_id);
 
@@ -184,6 +195,7 @@ CREATE TABLE IF NOT EXISTS self_cards (
     client_id INTEGER NOT NULL UNIQUE,
     card_json TEXT NOT NULL,
     auto_update_enabled BOOLEAN DEFAULT TRUE,
+    is_pinned BOOLEAN DEFAULT FALSE,  -- Always load in context
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (client_id) REFERENCES client_profiles(id)
@@ -204,6 +216,7 @@ CREATE TABLE IF NOT EXISTS world_events (
     event_type TEXT NOT NULL,
     is_canon_law BOOLEAN DEFAULT FALSE,
     auto_update_enabled BOOLEAN DEFAULT TRUE,
+    is_pinned BOOLEAN DEFAULT FALSE,  -- Always load in context
     resolved BOOLEAN DEFAULT FALSE,
     vector_embedding BLOB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -241,6 +254,11 @@ CREATE INDEX IF NOT EXISTS idx_entity_mentions_time ON entity_mentions(mentioned
 
 -- Additional index for change_log (Phase 1)
 CREATE INDEX IF NOT EXISTS idx_change_log_entity_time ON change_log(entity_type, entity_id, changed_at DESC);
+
+-- Pinned card indexes (Phase 4 - Migration 004)
+CREATE INDEX IF NOT EXISTS idx_self_cards_pinned ON self_cards(client_id, is_pinned);
+CREATE INDEX IF NOT EXISTS idx_character_cards_pinned ON character_cards(client_id, is_pinned);
+CREATE INDEX IF NOT EXISTS idx_world_events_pinned ON world_events(client_id, is_pinned);
 
 -- ============================================================
 -- LEGACY COLUMNS (Reserved for future use)

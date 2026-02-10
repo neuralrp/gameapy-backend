@@ -1,28 +1,60 @@
 # Gameapy Database Migrations
 
-## Running Migrations
+## Automatic Migration Runner
 
-### Apply Phase 1 Migration:
+Migrations are **automatically run on app startup**. No manual intervention required.
+
+When you deploy (locally, Railway, or anywhere else), the app will:
+1. Check which migrations have already been applied
+2. Run any pending migrations in order
+3. Skip migrations that are already applied
+
+### How It Works
+
+The migration system lives in `migrations/run_migrations.py`:
+- Tracks all migrations in `migration_history` table
+- Automatically applies pending migrations on startup
+- Safe to run multiple times (idempotent)
+
+### Adding New Migrations
+
+To add a new migration:
+
+1. Create `backend/migrations/00X_migration_name.py`
+2. Add entry to `MIGRATIONS` list in `migrations/run_migrations.py`:
+   ```python
+   {
+       "id": "006",
+       "name": "my_migration",
+       "module": "migrations.006_my_migration",
+       "function": "migrate"  # or your function name
+   }
+   ```
+3. Push to GitHub - migration will run automatically on next deployment
+
+### Running Migrations Manually (Optional)
+
+If you need to run migrations manually:
+
 ```bash
 cd backend
-python migrations/001_phase1_schema.py
+python migrations/run_migrations.py
 ```
 
 ### Check Migration Status:
 ```bash
 sqlite3 gameapy.db
-.schema character_cards  # Verify new columns
-.schema self_cards       # Should exist after Phase 1
-.schema world_events     # Should exist after Phase 1
 SELECT * FROM migration_history;  # View applied migrations
 .quit
 ```
 
 ## Migration History
 
-| ID  | Name              | Applied | Description                           |
-|-----|-------------------|---------|---------------------------------------|
-| 001 | phase1_schema.py  | TBD     | Adds self_cards, world_events, entity tracking |
+| ID  | Name              | Description                           |
+|-----|-------------------|---------------------------------------|
+| 001 | phase1_schema.py  | Adds self_cards, world_events, entity tracking |
+| 004 | pivot_cleanup.py  | Adds is_pinned columns, removes canon law dependencies |
+| 005 | add_hidden_flag.py | Adds is_hidden flag to counselor_profiles |
 
 ## Rollback
 
@@ -31,18 +63,11 @@ SELECT * FROM migration_history;  # View applied migrations
 cp backend/gameapy.db backend/gameapy.db.backup
 ```
 
-## Adding New Migrations
-
-1. Create `backend/migrations/00X_migration_name.py`
-2. Add entry to `migration_history` table (handled automatically)
-3. Update this README with migration details
-
 ## Migration Conventions
 
 - Each migration script should have a unique 3-digit ID (001, 002, etc.)
-- Use `migration_tracker` functions to check if migration is already applied
+- Add entry to `MIGRATIONS` list in `run_migrations.py`
 - Always wrap changes in transactions with rollback on error
-- Record successful migrations in `migration_history`
 - Test migrations on a backup database before production
 
 ## Development
