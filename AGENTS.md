@@ -52,7 +52,7 @@ gameapy-web/              # Web frontend repo
 
 **Completed Backend**: Phases 1-7 (All backend features + complete test infrastructure)
 **Completed Frontend**: Phases 0-6 (Web MVP complete + deployed to Vercel)
-**Latest Update**: GuideScreen for organic card creation, keyword-only search (no vector embeddings)
+**Latest Update**: Easter egg feature "Summon Deirdre" with hidden counselor flag, counselor-specific color theming
 **Production Deploy**: Backend on Railway, Frontend on Vercel
 **Status**: Live at https://gameapy-web.vercel.app
 
@@ -67,6 +67,8 @@ gameapy-web/              # Web frontend repo
 - Pytest Testing Infrastructure: File-based test DB, LLM mocking, test isolation
 - **All 89 tests passing** (100% pass rate, 68% code coverage)
 - Deterministic test execution (no state pollution, per-request LLM clients)
+- **Easter Egg Feature**: "Summon Deirdre" in Marina chat switches to hidden counselor Deirdre
+- **Hidden Counselor Flag**: is_hidden column marks Easter egg counselors (not shown in selection screen)
 
 ### What's Working (Frontend - Web MVP)
 - **Phase 0 Complete**: React + Vite + TypeScript project initialized
@@ -78,13 +80,16 @@ gameapy-web/              # Web frontend repo
 - **Phase 6 Complete**: Testing, bug fixes, and Vercel deployment
 - **Production Deploy**: https://gameapy-web.vercel.app
 - **GuideScreen**: Organic card creation flow with conversational onboarding
-- **CounselorInfoModal**: View counselor details from chat screen
+- **CounselorInfoModal**: View counselor details from chat screen with counselor-specific colors
 - **Toast Component**: User notifications (success/error/info)
 - **Redesign**: CounselorSelection as 2x2 color block grid
 - **Redesign**: ChatScreen with iMessage-style bubbles, counselor info link
 - **Auto-Session Analysis**: Every 5 messages, trigger card updates with toast notification
 - **Session Message Counting**: Track messages per session for analysis triggers
 - **Global State**: Guide flow state (showGuide, guideSessionId) in AppContext
+- **Easter Egg Feature**: "Summon Deirdre" in Marina chat switches to hidden counselor Deirdre
+- **Counselor Switching**: Frontend handles counselor_switched flag, updates state, shows toast
+- **Counselor-Specific Theming**: Colors automatically update based on counselor's visual settings
 - GBA color palette configured in Tailwind CSS v4
 - VT323 retro font loaded from Google Fonts
 - Client ID auto-generation with localStorage persistence
@@ -295,12 +300,13 @@ response = await simple_llm_client.chat_completion(
 | `backend/app/services/guide_system.py` | Organic guide conversation system |
 | `backend/app/services/card_updater.py` | Auto-update service |
 | `backend/app/services/simple_llm_fixed.py` | HTTP client for OpenRouter API |
-| `backend/app/models/schemas.py` | Pydantic models |
-| `backend/app/config/core_truths.py` | Universal principles for all personas (non-clinical AI companion) |
-| `backend/data/personas/*.json` | Persona definitions (who_you_are, your_vibe, your_worldview) |
-| `backend/scripts/seed_personas.py` | Persona JSON → DB sync script |
-| `backend/schema.sql` | Database schema |
-| `backend/pytest.ini` | Pytest configuration (asyncio, markers, test discovery, coverage) |
+ | `backend/app/models/schemas.py` | Pydantic models |
+ | `backend/app/config/core_truths.py` | Universal principles for all personas (non-clinical AI companion) |
+ | `backend/data/personas/*.json` | Persona definitions (who_you_are, your_vibe, your_worldview) |
+ | `backend/scripts/seed_personas.py` | Persona JSON → DB sync script (supports is_hidden) |
+ | `backend/migrations/005_add_hidden_flag.py` | Add is_hidden column for Easter egg counselors |
+ | `backend/schema.sql` | Database schema |
+ | `backend/pytest.ini` | Pytest configuration (asyncio, markers, test discovery, coverage) |
 
 ### Frontend Core (Web MVP)
 
@@ -317,9 +323,10 @@ response = await simple_llm_client.chat_completion(
 | `gameapy-web/src/screens/GuideScreen.tsx` | Organic card creation flow ✅ |
 | `gameapy-web/src/components/ui/button.tsx` | Button component with GBA styling |
 | `gameapy-web/src/components/counselor/CounselorCard.tsx` | Counselor card component |
-| `gameapy-web/src/components/counselor/CounselorInfoModal.tsx` | Counselor details modal ✅ |
-| `gameapy-web/src/components/shared/Toast.tsx` | Toast notification component ✅ |
-| `gameapy-web/package.json` | Dependencies (React 19.2.0+, Vite 7.2.4+, Tailwind 4.1.18+) |
+ | `gameapy-web/src/components/counselor/CounselorInfoModal.tsx` | Counselor details modal with counselor-specific colors ✅ |
+ | `gameapy-web/src/components/shared/Toast.tsx` | Toast notification component ✅ |
+ | `backend/data/personas/Deirdre.json` | Deirdre persona (hidden Easter egg counselor) |
+ | `gameapy-web/package.json` | Dependencies (React 19.2.0+, Vite 7.2.4+, Tailwind 4.1.18+) |
 | `gameapy-web/vite.config.ts` | Vite build configuration |
 | `gameapy-web/vercel.json` | Vercel deployment configuration |
 | `gameapy-web/.env.production` | Production environment variables |
