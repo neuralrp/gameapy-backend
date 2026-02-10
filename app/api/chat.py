@@ -134,17 +134,7 @@ async def chat_with_counselor(request: ChatRequest):
                 mention_context=message_data.content
             )
         
-        # 2. Assemble context for LLM
-        context = context_assembler.assemble_context(
-            client_id=client_id,
-            session_id=session_id,
-            user_message=message_data.content
-        )
-        
-        # 3. Get session messages for conversation history
-        session_messages = db.get_session_messages(session_id, limit=10)
-        
-        # Get counselor profile from session
+        # 2. Get counselor profile from session
         counselor_id = session.get('counselor_id')
         if not counselor_id:
             raise HTTPException(status_code=400, detail="Session has no counselor assigned")
@@ -154,6 +144,29 @@ async def chat_with_counselor(request: ChatRequest):
             raise HTTPException(status_code=404, detail=f"Counselor profile not found (id={counselor_id})")
         
         counselor_data = counselor['profile']['data']
+        
+        # Easter Egg: "Summon Deirdre" (case-insensitive)
+        counselor_switched = False
+        new_counselor_data = None
+        if message_data.content.lower().strip() == "summon deirdre" and counselor_data['name'].lower() == "marina":
+            deirdre_counselor = db.get_counselor_by_name("Deirdre")
+            if deirdre_counselor:
+                db.update_session_counselor(session_id, deirdre_counselor['id'])
+                counselor_switched = True
+                new_counselor_data = deirdre_counselor['profile']['data']
+                counselor = deirdre_counselor
+                counselor_id = deirdre_counselor['id']
+                counselor_data = new_counselor_data
+        
+        # 3. Assemble context for LLM
+        context = context_assembler.assemble_context(
+            client_id=client_id,
+            session_id=session_id,
+            user_message=message_data.content
+        )
+        
+        # 4. Get session messages for conversation history
+        session_messages = db.get_session_messages(session_id, limit=10)
         
         # 4. Format context for LLM
         context_str = _format_context_for_llm(context)
@@ -202,7 +215,9 @@ async def chat_with_counselor(request: ChatRequest):
                 "user_message_id": user_message_id,
                 "ai_message_id": ai_message_id,
                 "ai_response": ai_content or "",
-                "cards_loaded": context.get('total_cards_loaded', 0)
+                "cards_loaded": context.get('total_cards_loaded', 0),
+                "counselor_switched": counselor_switched,
+                "new_counselor": new_counselor_data if counselor_switched else None
             }
         )
         

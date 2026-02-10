@@ -209,6 +209,33 @@ class Database:
                 for row in cursor.fetchall()
             ]
 
+    def get_counselor_by_name(self, name: str) -> Optional[Dict]:
+        """Get counselor profile by name (case-insensitive)."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, entity_id, name, specialization, therapeutic_style, credentials, profile_json, tags, created_at, updated_at
+                FROM counselor_profiles
+                WHERE LOWER(name) = LOWER(?) AND is_active = TRUE AND deleted_at IS NULL
+            """, (name,))
+
+            row = cursor.fetchone()
+            if not row:
+                return None
+
+            return {
+                'id': row[0],
+                'entity_id': row[1],
+                'name': row[2],
+                'specialization': row[3],
+                'therapeutic_style': row[4],
+                'credentials': row[5],
+                'profile': json.loads(row[6]),
+                'tags': json.loads(row[7]),
+                'created_at': row[8],
+                'updated_at': row[9]
+            }
+
     # Session Operations
     def create_session(self, client_id: int, counselor_id: int) -> int:
         """Create a new counseling session."""
@@ -569,6 +596,16 @@ class Database:
             """, (session_id,))
             row = cursor.fetchone()
             return dict(row) if row else None
+
+    def update_session_counselor(self, session_id: int, new_counselor_id: int) -> bool:
+        """Update the counselor for a session."""
+        with self._get_connection() as conn:
+            cursor = conn.execute("""
+                UPDATE sessions
+                SET counselor_id = ?
+                WHERE id = ?
+            """, (new_counselor_id, session_id))
+            return cursor.rowcount > 0
 
     # ============================================================
     # Pin/Unpin Methods
