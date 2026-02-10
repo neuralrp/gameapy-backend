@@ -22,41 +22,132 @@ router = APIRouter()
 
 
 def _format_context_for_llm(context: Dict) -> str:
-    """Format loaded cards as context string for LLM."""
+    """Format loaded cards as human-readable context string for LLM."""
     sections = []
     
     if context['self_card']:
-        sections.append(f"### Self Card\n{json.dumps(context['self_card'], indent=2)}")
+        sections.append(_format_self_card_prose(context['self_card']))
     
     if context['pinned_cards']:
-        sections.append(f"### Pinned Cards ({len(context['pinned_cards'])})")
+        sections.append("## People & Events Kept in Mind")
         for card in context['pinned_cards']:
-            name = card.get('name', card.get('title', f'Card {card["id"]}'))
-            sections.append(f"- {card['card_type'].upper()}: {name}")
+            sections.append(_format_card_prose(card))
     
     if context['current_mentions']:
-        sections.append(f"### Current Session Mentions ({len(context['current_mentions'])})")
+        sections.append("## Currently Discussing")
         for card in context['current_mentions']:
-            name = card.get('name', card.get('title', f'Card {card["id"]}'))
-            sections.append(f"- {card['card_type'].upper()}: {name}")
+            sections.append(_format_card_prose(card))
     
     if context['recent_cards']:
-        sections.append(f"### Recent Cards ({len(context['recent_cards'])})")
+        sections.append("## Recently Referenced")
         for card in context['recent_cards']:
-            name = card.get('name', card.get('title', f'Card {card["id"]}'))
-            sections.append(f"- {card['card_type'].upper()}: {name}")
+            sections.append(_format_card_prose(card))
     
     return "\n\n".join(sections) if sections else "No context loaded"
 
 
+def _format_self_card_prose(card: Dict) -> str:
+    """Format self card as human-readable prose."""
+    payload = card.get('payload', {})
+    
+    parts = ["## About This User"]
+    
+    if payload.get('name'):
+        parts.append(f"Name: {payload['name']}")
+    
+    if payload.get('personality'):
+        parts.append(f"Personality: {payload['personality']}")
+    
+    if payload.get('traits'):
+        parts.append(f"Traits: {', '.join(payload['traits'][:5])}")
+    
+    if payload.get('interests'):
+        parts.append(f"Interests: {', '.join(payload['interests'][:5])}")
+    
+    if payload.get('values'):
+        parts.append(f"Values: {', '.join(payload['values'][:5])}")
+    
+    if payload.get('goals'):
+        goals = payload['goals'][:3]
+        goal_str = '; '.join([g.get('goal', g) if isinstance(g, dict) else g for g in goals])
+        parts.append(f"Goals: {goal_str}")
+    
+    if payload.get('triggers'):
+        parts.append(f"Triggers: {', '.join(payload['triggers'][:3])}")
+    
+    if payload.get('coping_strategies'):
+        parts.append(f"Coping: {', '.join(payload['coping_strategies'][:3])}")
+    
+    return '\n'.join(parts)
+
+
+def _format_card_prose(card: Dict) -> str:
+    """Format character/world card as human-readable prose."""
+    card_type = card.get('card_type', '')
+    payload = card.get('payload', {})
+    
+    if card_type == 'character':
+        parts = []
+        name = payload.get('name', 'Someone')
+        parts.append(f"**{name}**")
+        
+        rel_type = payload.get('relationship_type', 'person')
+        parts.append(f"Relationship: {rel_type}")
+        
+        if payload.get('personality'):
+            parts.append(f"Personality: {payload['personality']}")
+        
+        if payload.get('emotional_state', {}).get('user_to_other'):
+            emo = payload['emotional_state']['user_to_other']
+            parts.append(
+                f"Dynamic — Trust: {emo.get('trust', 'N/A')}/100, "
+                f"Conflict: {emo.get('conflict', 'N/A')}/100, "
+                f"Bond: {emo.get('emotional_bond', 'N/A')}/100"
+            )
+        
+        if payload.get('key_events'):
+            events = payload['key_events'][:2]
+            for ev in events:
+                parts.append(f"- {ev.get('event', '')} ({ev.get('date', 'unknown')})")
+        
+        if payload.get('user_feelings'):
+            feelings = payload['user_feelings'][:2]
+            feeling_str = ', '.join([f['feeling'] for f in feelings])
+            parts.append(f"User feels: {feeling_str}")
+        
+        return '\n'.join(parts)
+    
+    elif card_type == 'world':
+        parts = []
+        title = payload.get('title', 'Event')
+        event_type = payload.get('event_type', 'event')
+        parts.append(f"**{title}** — {event_type}")
+        
+        if payload.get('description'):
+            parts.append(payload['description'][:200])
+        
+        if payload.get('key_array'):
+            parts.append(f"Key themes: {', '.join(payload['key_array'][:5])}")
+        
+        resolved = payload.get('resolved', False)
+        parts.append(f"Status: {'resolved' if resolved else 'ongoing'}")
+        
+        return '\n'.join(parts)
+    
+    return f"{card_type.upper()}: {card.get('name', card.get('title', 'Card'))}"
+
+
 def _format_counselor_examples(examples: List[Dict]) -> str:
     """Format session examples for system prompt."""
-    formatted = []
-    for example in examples:
-        formatted.append(f"User: {example['user_situation']}")
-        formatted.append(f"You: {example['your_response']}")
-        formatted.append(f"Approach: {example['approach']}\n")
-    return "\n".join(formatted)
+    if not examples:
+        return ""
+    
+    example = examples[0]
+    return (
+        f"User: {example['user_situation']}\n"
+        f"You: {example['your_response']}\n"
+        f"Approach: {example['approach']}\n"
+    )
 
 
 def _build_counselor_system_prompt(counselor_data: Dict) -> str:
@@ -72,7 +163,6 @@ def _build_counselor_system_prompt(counselor_data: Dict) -> str:
     your_worldview = counselor_data.get('your_worldview', '')
     session_template = counselor_data.get('session_template', '')
     examples = counselor_data.get('session_examples', [])
-    tags = counselor_data.get('tags', [])
     crisis_protocol = counselor_data.get('crisis_protocol', '')
     
     prompt += f"You are {name}. {who_you_are}\n\n"
@@ -87,15 +177,13 @@ def _build_counselor_system_prompt(counselor_data: Dict) -> str:
         prompt += f"Session opening: {session_template}\n\n"
     
     if examples:
-        prompt += "Examples of your approach:\n"
+        prompt += "Example of your approach:\n"
         prompt += _format_counselor_examples(examples)
         prompt += "\n"
     
-    if tags:
-        prompt += f"Tags: {', '.join(tags)}\n\n"
-    
     if crisis_protocol:
-        prompt += f"\nCrisis protocol:\n{crisis_protocol}\n"
+        prompt += "If user expresses self-harm or crisis: prioritize safety, validate courage, and provide resources: "
+        prompt += "**988** (call/text), **Crisis Text Line** (text HOME to 741741). Stay present until safety plan established.\n"
     
     return prompt
 
@@ -176,7 +264,7 @@ async def chat_with_counselor(request: ChatRequest):
         
         # Add context as system message
         llm_messages = [
-            {"role": "system", "content": f"Context:\n{context_str}\n\n{system_prompt_content}"}
+            {"role": "system", "content": f"{system_prompt_content}\n\n---\n\nContext about this user:\n{context_str}"}
         ]
         
         # Convert DB messages to LLM format
