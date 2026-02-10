@@ -133,9 +133,10 @@ class Database:
 
             # Map JSON fields to DB columns
             # credentials column now stores your_worldview
+            # is_hidden is an optional field for Easter egg counselors
             cursor.execute("""
-                INSERT INTO counselor_profiles (entity_id, name, specialization, therapeutic_style, credentials, profile_json, tags)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO counselor_profiles (entity_id, name, specialization, therapeutic_style, credentials, profile_json, tags, is_hidden)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 entity_id,
                 profile_data['data']['name'],
@@ -143,7 +144,8 @@ class Database:
                 profile_data['data'].get('your_vibe', ''),  # therapeutic_style column
                 profile_data['data'].get('your_worldview', ''),  # credentials column now stores worldview
                 json.dumps(profile_data),
-                json.dumps(profile_data['data'].get('tags', []))
+                json.dumps(profile_data['data'].get('tags', [])),
+                profile_data['data'].get('is_hidden', False)  # is_hidden field (optional, default False)
             ))
 
             profile_id = cursor.lastrowid
@@ -153,10 +155,11 @@ class Database:
             # Log creation
             self._log_change(conn, 'counselor_profile', profile_id, 'created', None, profile_data)
 
+
             return profile_id
 
     def get_counselor_profile(self, profile_id: int) -> Optional[Dict]:
-        """Get counselor profile by ID."""
+        """Get counselor profile by ID (includes hidden counselors)."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -183,13 +186,13 @@ class Database:
             }
 
     def get_all_counselors(self) -> List[Dict]:
-        """Get all active counselor profiles."""
+        """Get all active counselor profiles (excluding hidden counselors)."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT id, entity_id, name, specialization, therapeutic_style, credentials, profile_json, tags, created_at, updated_at
                 FROM counselor_profiles
-                WHERE is_active = TRUE AND deleted_at IS NULL
+                WHERE is_active = TRUE AND deleted_at IS NULL AND is_hidden = FALSE
                 ORDER BY name
             """)
 

@@ -32,17 +32,17 @@ def validate_persona(profile_data):
     missing = [f for f in required if f not in profile_data]
     if missing:
         raise ValueError(f"Missing required fields: {', '.join(missing)}")
-    
+
     data = profile_data.get("data", {})
     required_data = ["name", "who_you_are", "your_vibe", "your_worldview",
                      "session_template", "session_examples"]
     missing_data = [f for f in required_data if f not in data]
     if missing_data:
         raise ValueError(f"Missing required data fields: {', '.join(missing_data)}")
-    
+
     if not data["session_examples"]:
         raise ValueError("session_examples must contain at least one example")
-    
+
     # Validate example structure
     for i, example in enumerate(data["session_examples"]):
         if "user_situation" not in example:
@@ -51,7 +51,12 @@ def validate_persona(profile_data):
             raise ValueError(f"Example {i+1}: Missing 'your_response' field")
         if "approach" not in example:
             raise ValueError(f"Example {i+1}: Missing 'approach' field")
-    
+
+    # Validate optional is_hidden field
+    is_hidden = data.get("is_hidden", False)
+    if not isinstance(is_hidden, bool):
+        raise ValueError("is_hidden must be a boolean (true/false)")
+
     return True
 
 
