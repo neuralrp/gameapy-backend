@@ -10,7 +10,7 @@ import os
 from contextlib import contextmanager
 import logging
 
-DB_PATH = os.path.join(os.path.dirname(__file__), '..', '..', 'gameapy.db')
+DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'gameapy.db')
 logger = logging.getLogger(__name__)
 
 

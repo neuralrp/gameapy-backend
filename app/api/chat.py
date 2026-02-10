@@ -153,7 +153,7 @@ async def chat_with_counselor(request: ChatRequest):
         if not counselor:
             raise HTTPException(status_code=404, detail=f"Counselor profile not found (id={counselor_id})")
         
-        counselor_data = json.loads(counselor['profile_json'])['data']
+        counselor_data = counselor['profile']['data']
         
         # 4. Format context for LLM
         context_str = _format_context_for_llm(context)
@@ -178,10 +178,11 @@ async def chat_with_counselor(request: ChatRequest):
         response = await simple_llm_client.chat_completion(
             messages=llm_messages,
             temperature=0.7,
-            max_tokens=150
+            max_tokens=500
         )
         
-        ai_content = response.get('choices', [{}])[0].get('message', {}).get('content', '')
+        choices = response.get('choices', [])
+        ai_content = choices[0].get('message', {}).get('content', '') if choices else ''
         
         # Add AI response to session
         if ai_content:
@@ -244,7 +245,7 @@ async def chat_with_counselor_stream(request: ChatRequest):
         if not counselor:
             raise HTTPException(status_code=404, detail=f"Counselor profile not found (id={counselor_id})")
         
-        counselor_data = json.loads(counselor['profile_json'])['data']
+        counselor_data = counselor['profile']['data']
         
         # Build system prompt from counselor data
         system_prompt_content = _build_counselor_system_prompt(counselor_data)
@@ -261,36 +262,26 @@ async def chat_with_counselor_stream(request: ChatRequest):
         from fastapi.responses import StreamingResponse
         
         async def generate():
-            full_response = ""
             # For now, use non-streaming for simplicity
             response = await simple_llm_client.chat_completion(
                 messages=llm_messages,
                 temperature=0.7,
-                max_tokens=150
+                max_tokens=500
             )
             
-            full_response = response.get('choices', [{}])[0].get('message', {}).get('content', '')
+            choices = response.get('choices', [])
+            full_response = choices[0].get('message', {}).get('content', '') if choices else ''
+            
+            # Store the response in database
+            if full_response:
+                db.add_message(
+                    session_id=session_id,
+                    role="assistant", 
+                    content=full_response,
+                    speaker="counselor"
+                )
+            
             yield f"data: {json.dumps({'content': full_response})}\n\n"
-        
-        # Store the response in database
-        full_response = ""
-        response = await simple_llm_client.chat_completion(
-            messages=llm_messages,
-            temperature=0.7,
-            max_tokens=150
-        )
-        
-        full_response = response.get('choices', [{}])[0].get('message', {}).get('content', '')
-        
-        if full_response:
-            ai_message_id = db.add_message(
-                session_id=session_id,
-                role="assistant", 
-                content=full_response,
-                speaker="counselor"
-            )
-        else:
-            ai_message_id = None
         
         return StreamingResponse(
             generate(),
@@ -298,6 +289,8 @@ async def chat_with_counselor_stream(request: ChatRequest):
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

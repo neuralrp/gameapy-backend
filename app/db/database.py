@@ -273,20 +273,22 @@ class Database:
         session_id: int,
         limit: Optional[int] = None
     ) -> List[Dict]:
-        """Get messages from a session."""
+        """Get messages from a session (most recent first, reversed for chronological order)."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             sql = """
                 SELECT id, role, content, speaker, timestamp
                 FROM messages
                 WHERE session_id = ?
-                ORDER BY timestamp ASC
+                ORDER BY timestamp DESC
             """
             if limit:
                 sql += f" LIMIT {limit}"
 
             cursor.execute(sql, (session_id,))
-            return [dict(row) for row in cursor.fetchall()]
+            rows = cursor.fetchall()
+            # Reverse to return in chronological order (oldest first)
+            return [dict(row) for row in reversed(rows)]
 
     # Character Card Operations
     def create_character_card(
