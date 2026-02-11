@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.db.database import Database
 
 
-PERSONAS_DIR = Path("data/personas")
+PERSONAS_DIR = Path("app/data/personas")
 
 
 def validate_persona(profile_data):

@@ -2,8 +2,11 @@ import sqlite3
 import json
 import uuid
 import os
+import hashlib
+import base64
+import secrets
 from contextlib import contextmanager
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 from datetime import datetime
 
 
@@ -75,20 +78,31 @@ class Database:
                 print(f"[INFO] Schema tables already exist, skipping creation")
 
     # Client Profile Operations
-    def create_client_profile(self, profile_data: Dict[str, Any]) -> int:
-        """Create a new client profile."""
+    def create_client_profile(self, profile_data: Dict[str, Any]) -> Tuple[int, str]:
+        """
+        Create a new client profile with a recovery code.
+        
+        Returns:
+            Tuple of (client_id, recovery_code)
+        """
         with self._get_connection() as conn:
             cursor = conn.cursor()
             entity_id = f"client_{uuid.uuid4().hex}"
+            
+            # Generate recovery code
+            recovery_code = self._generate_recovery_code()
+            recovery_code_hash = self._hash_recovery_code(recovery_code)
 
             cursor.execute("""
-                INSERT INTO client_profiles (entity_id, name, profile_json, tags)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO client_profiles (entity_id, name, profile_json, tags, recovery_code_hash, recovery_code_expires_at)
+                VALUES (?, ?, ?, ?, ?, ?)
             """, (
                 entity_id,
                 profile_data['data']['name'],
                 json.dumps(profile_data),
-                json.dumps(profile_data['data'].get('tags', []))
+                json.dumps(profile_data['data'].get('tags', [])),
+                recovery_code_hash,
+                None  # No expiration for alpha stage
             ))
 
             profile_id = cursor.lastrowid
@@ -104,7 +118,7 @@ class Database:
             # Log creation
             self._log_change(conn, 'client_profile', profile_id, 'created', None, profile_data)
 
-            return profile_id
+            return profile_id, recovery_code
 
     def get_client_profile(self, profile_id: int) -> Optional[Dict]:
         """Get client profile by ID."""
@@ -1110,6 +1124,119 @@ class Database:
                 error_message,
                 json.dumps(metadata) if metadata else None
             ))
+
+    # Recovery Code Operations
+    def _generate_recovery_code(self) -> str:
+        """Generate a 16-character, user-friendly recovery code."""
+        # Generate random bytes and encode as base32 for readability
+        code_bytes = secrets.token_bytes(10)
+        code = base64.b32encode(code_bytes).decode('ascii').upper()
+        # Format as XXXX-XXXX-XXXX-XXXX for readability
+        return '-'.join([code[i:i+4] for i in range(0, 16, 4)])
+
+    def _hash_recovery_code(self, code: str) -> str:
+        """Hash recovery code using SHA-256 for security."""
+        return hashlib.sha256(code.encode()).hexdigest()
+
+    def generate_new_recovery_code(self, client_id: int) -> Optional[str]:
+        """
+        Generate new recovery code for existing client.
+        
+        Args:
+            client_id: The client ID to generate code for
+            
+        Returns:
+            The new recovery code, or None if client not found
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check if client exists
+            cursor.execute("""
+                SELECT id FROM client_profiles
+                WHERE id = ? AND is_active = TRUE
+            """, (client_id,))
+            
+            if not cursor.fetchone():
+                return None
+            
+            # Generate new recovery code
+            recovery_code = self._generate_recovery_code()
+            recovery_code_hash = self._hash_recovery_code(recovery_code)
+            
+            cursor.execute("""
+                UPDATE client_profiles
+                SET recovery_code_hash = ?,
+                    recovery_code_expires_at = NULL,
+                    last_recovery_at = NULL
+                WHERE id = ?
+            """, (recovery_code_hash, client_id))
+            
+            conn.commit()
+            return recovery_code
+
+    def validate_recovery_code(self, recovery_code: str) -> Optional[int]:
+        """
+        Validate recovery code and return client_id if valid.
+        
+        Args:
+            recovery_code: The recovery code to validate
+            
+        Returns:
+            The client_id if valid, None otherwise
+        """
+        recovery_code_hash = self._hash_recovery_code(recovery_code)
+        
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id FROM client_profiles
+                WHERE recovery_code_hash = ?
+                AND (recovery_code_expires_at IS NULL OR recovery_code_expires_at > CURRENT_TIMESTAMP)
+                AND is_active = TRUE
+                AND deleted_at IS NULL
+            """, (recovery_code_hash,))
+            
+            row = cursor.fetchone()
+            if row:
+                client_id = row[0]
+                # Update last_recovery_at
+                cursor.execute("""
+                    UPDATE client_profiles
+                    SET last_recovery_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, (client_id,))
+                conn.commit()
+                return client_id
+            return None
+
+    def get_recovery_code_status(self, client_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get recovery code status for a client.
+        
+        Args:
+            client_id: The client ID to check
+            
+        Returns:
+            Dict with recovery status info, or None if client not found
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT recovery_code_hash, recovery_code_expires_at, last_recovery_at
+                FROM client_profiles
+                WHERE id = ? AND is_active = TRUE
+            """, (client_id,))
+            
+            row = cursor.fetchone()
+            if not row:
+                return None
+            
+            return {
+                'has_recovery_code': row[0] is not None,
+                'expires_at': row[1],
+                'last_recovered_at': row[2]
+            }
 
 
 # Global database instance - will be initialized after migrations run in main.py

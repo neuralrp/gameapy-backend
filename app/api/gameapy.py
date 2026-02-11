@@ -27,7 +27,7 @@ async def health_check():
 # Client Profile Routes
 @router.post("/clients", response_model=APIResponse)
 async def create_client(client_data: ClientProfileCreate):
-    """Create a new client profile."""
+    """Create a new client profile with recovery code."""
     try:
         profile_data = {
             "spec": "client_profile_v1",
@@ -35,12 +35,15 @@ async def create_client(client_data: ClientProfileCreate):
             "data": client_data.dict()
         }
         
-        client_id = db.create_client_profile(profile_data)
+        client_id, recovery_code = db.create_client_profile(profile_data)
         
         return APIResponse(
             success=True,
             message="Client profile created successfully",
-            data={"client_id": client_id}
+            data={
+                "client_id": client_id,
+                "recovery_code": recovery_code
+            }
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

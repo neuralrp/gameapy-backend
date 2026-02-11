@@ -71,6 +71,7 @@ from app.api.chat import router as chat_router
 from app.api.cards import router as cards_router
 from app.api.guide import router as guide_router
 from app.api.session_analyzer import router as session_analyzer_router
+from app.api.recovery import router as recovery_router
 
 # Configure CORS for Flutter development
 app.add_middleware(
@@ -127,6 +128,7 @@ app.include_router(chat_router, prefix="/api/v1/chat", tags=["chat"])
 app.include_router(cards_router)
 app.include_router(guide_router)
 app.include_router(session_analyzer_router)
+app.include_router(recovery_router)
 
 @app.get("/")
 async def root():

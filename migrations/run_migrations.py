@@ -45,6 +45,12 @@ MIGRATIONS = [
         "name": "add_relationship_label",
         "module": "migrations.006_add_relationship_label",
         "function": "migrate"
+    },
+    {
+        "id": "007",
+        "name": "add_recovery_code",
+        "module": "migrations.007_add_recovery_code",
+        "function": "migrate"
     }
 ]
 

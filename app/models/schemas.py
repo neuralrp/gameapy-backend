@@ -444,3 +444,32 @@ class CanonChangeResult(BaseModel):
     events_marked_canon: List[int]
     events_removed_canon: List[int]
     unchanged: int
+
+
+# ============================================================
+# Phase 8: Recovery Code Models
+# ============================================================
+
+class RecoveryCodeRequest(BaseModel):
+    """Request body for recovery code validation."""
+    recovery_code: str
+
+
+class RecoveryCodeResponse(BaseModel):
+    """Response from recovery code generation."""
+    recovery_code: str
+    generated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class RecoveryValidationResponse(BaseModel):
+    """Response from recovery code validation."""
+    valid: bool
+    client_id: Optional[int] = None
+    message: str
+
+
+class RecoveryStatus(BaseModel):
+    """Recovery code status for a client."""
+    has_recovery_code: bool
+    expires_at: Optional[datetime] = None
+    last_recovered_at: Optional[datetime] = None
