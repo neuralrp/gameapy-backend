@@ -152,10 +152,10 @@ async def update_card(card_id: int, request: CardUpdateRequest) -> APIResponse:
     """
     try:
         success = False
+        # Convert request to dict to handle flexible field mapping
+        request_dict = request.model_dump(exclude_none=True, exclude={'card_type'})
 
         if request.card_type == 'self':
-            # For self cards, we need to look up the client_id first
-            # since update_self_card takes client_id, not card_id
             self_card = db.get_self_card_by_id(card_id)
             if not self_card:
                 return APIResponse(
@@ -164,65 +164,103 @@ async def update_card(card_id: int, request: CardUpdateRequest) -> APIResponse:
                 )
             client_id = self_card['client_id']
 
-            if request.card_json is not None:
-                success = db.update_self_card(
-                    client_id=client_id,
-                    card_json=request.card_json,
-                    changed_by='user'
-                )
-            if request.auto_update_enabled is not None:
-                success = db.update_auto_update_enabled(
+            # Build updated card_json from existing data + new fields
+            existing_data = json.loads(self_card['card_json'])
+            updated_data = {**existing_data}
+
+            # Map frontend field names to card_json fields
+            if 'name' in request_dict:
+                updated_data['name'] = request_dict.pop('name')
+            elif 'card_name' in request_dict:
+                updated_data['name'] = request_dict.pop('card_name')
+
+            if 'description' in request_dict:
+                updated_data['description'] = request_dict.pop('description')
+            if 'personality' in request_dict:
+                updated_data['personality'] = request_dict.pop('personality')
+            if 'background' in request_dict:
+                updated_data['background'] = request_dict.pop('background')
+
+            # Serialize to JSON string and save
+            success = db.update_self_card(
+                client_id=client_id,
+                card_json=json.dumps(updated_data),
+                changed_by='user'
+            )
+
+            # Handle auto_update_enabled
+            if 'auto_update_enabled' in request_dict:
+                db.update_auto_update_enabled(
                     card_type='self',
                     card_id=card_id,
-                    enabled=request.auto_update_enabled
+                    enabled=request_dict['auto_update_enabled']
                 )
 
         elif request.card_type == 'character':
             update_kwargs = {}
-            if request.card_name is not None:
-                update_kwargs['card_name'] = request.card_name
-            if request.relationship_type is not None:
-                update_kwargs['relationship_type'] = request.relationship_type
-            if request.relationship_label is not None:
-                update_kwargs['relationship_label'] = request.relationship_label
-            if request.card_data is not None:
-                update_kwargs['card_json'] = json.dumps(request.card_data)
+
+            # Map frontend 'name' to backend 'card_name'
+            if 'name' in request_dict:
+                update_kwargs['card_name'] = request_dict.pop('name')
+            elif 'card_name' in request_dict:
+                update_kwargs['card_name'] = request_dict.pop('card_name')
+
+            if 'relationship_type' in request_dict:
+                update_kwargs['relationship_type'] = request_dict.pop('relationship_type')
+            if 'relationship_label' in request_dict:
+                update_kwargs['relationship_label'] = request_dict.pop('relationship_label')
+
+            # Handle personality field - merge into existing card_json
+            if 'personality' in request_dict or 'card_data' in request_dict:
+                char_card = db.get_character_card_by_id(card_id)
+                if char_card:
+                    existing_card_data = json.loads(char_card['card_json']) if char_card['card_json'] else {}
+                    updated_card_data = {**existing_card_data}
+
+                    if 'personality' in request_dict:
+                        updated_card_data['personality'] = request_dict.pop('personality')
+                    if 'card_data' in request_dict:
+                        updated_card_data.update(request_dict.pop('card_data'))
+
+                    update_kwargs['card_json'] = json.dumps(updated_card_data)
 
             if update_kwargs:
                 update_kwargs['changed_by'] = 'user'
                 success = db.update_character_card(card_id, **update_kwargs)
 
-            if request.auto_update_enabled is not None:
-                success = db.update_auto_update_enabled(
+            # Handle auto_update_enabled
+            if 'auto_update_enabled' in request_dict:
+                db.update_auto_update_enabled(
                     card_type='character',
                     card_id=card_id,
-                    enabled=request.auto_update_enabled
+                    enabled=request_dict['auto_update_enabled']
                 )
 
         elif request.card_type == 'world':
             update_kwargs = {}
-            if request.title is not None:
-                update_kwargs['title'] = request.title
-            if request.key_array is not None:
-                update_kwargs['key_array'] = request.key_array
-            if request.description is not None:
-                update_kwargs['description'] = request.description
-            if request.event_type is not None:
-                update_kwargs['event_type'] = request.event_type
-            if request.is_canon_law is not None:
-                update_kwargs['is_canon_law'] = request.is_canon_law
-            if request.resolved is not None:
-                update_kwargs['resolved'] = request.resolved
+            if 'title' in request_dict:
+                update_kwargs['title'] = request_dict.pop('title')
+            if 'key_array' in request_dict:
+                update_kwargs['key_array'] = request_dict.pop('key_array')
+            if 'description' in request_dict:
+                update_kwargs['description'] = request_dict.pop('description')
+            if 'event_type' in request_dict:
+                update_kwargs['event_type'] = request_dict.pop('event_type')
+            if 'is_canon_law' in request_dict:
+                update_kwargs['is_canon_law'] = request_dict.pop('is_canon_law')
+            if 'resolved' in request_dict:
+                update_kwargs['resolved'] = request_dict.pop('resolved')
 
             if update_kwargs:
                 update_kwargs['changed_by'] = 'user'
                 success = db.update_world_event(card_id, **update_kwargs)
 
-            if request.auto_update_enabled is not None:
-                success = db.update_auto_update_enabled(
+            # Handle auto_update_enabled
+            if 'auto_update_enabled' in request_dict:
+                db.update_auto_update_enabled(
                     card_type='world',
                     card_id=card_id,
-                    enabled=request.auto_update_enabled
+                    enabled=request_dict['auto_update_enabled']
                 )
         else:
             return APIResponse(

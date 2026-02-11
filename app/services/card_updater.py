@@ -89,7 +89,7 @@ class CardUpdater:
                     continue
 
                 try:
-                    applied_fields = self._apply_update(card_type, card_id, card_updates)
+                    applied_fields = self._apply_update(card_type, card_id, card_updates, client_id)
                     if applied_fields:
                         cards_updated += 1
                         updates_applied.append({
@@ -263,7 +263,8 @@ Do not include any text outside of JSON."""
         self,
         card_type: str,
         card_id: int,
-        updates: List[Dict[str, Any]]
+        updates: List[Dict[str, Any]],
+        client_id: int
     ) -> List[str]:
         """Apply updates to a card with conflict resolution."""
         applied_fields = []
@@ -271,9 +272,9 @@ Do not include any text outside of JSON."""
         if card_type == 'self':
             return self._apply_self_card_update(card_id, updates)
         elif card_type == 'character':
-            return self._apply_character_card_update(card_id, updates)
+            return self._apply_character_card_update(card_id, updates, client_id)
         elif card_type == 'world':
-            return self._apply_world_event_update(card_id, updates)
+            return self._apply_world_event_update(card_id, updates, client_id)
         else:
             return []
 
@@ -327,10 +328,11 @@ Do not include any text outside of JSON."""
     def _apply_character_card_update(
         self,
         card_id: int,
-        updates: List[Dict[str, Any]]
+        updates: List[Dict[str, Any]],
+        client_id: int
     ) -> List[str]:
         """Apply updates to character card."""
-        char_card = db.get_character_cards(0)
+        char_card = db.get_character_cards(client_id)
         if not char_card:
             return []
 
@@ -382,10 +384,11 @@ Do not include any text outside of JSON."""
     def _apply_world_event_update(
         self,
         card_id: int,
-        updates: List[Dict[str, Any]]
+        updates: List[Dict[str, Any]],
+        client_id: int
     ) -> List[str]:
         """Apply updates to world event."""
-        events = db.get_world_events(0)
+        events = db.get_world_events(client_id)
         if not events:
             return []
 

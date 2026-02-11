@@ -393,6 +393,9 @@ class CardUpdateRequest(BaseModel):
     resolved: Optional[bool] = None
     auto_update_enabled: Optional[bool] = None
     is_pinned: Optional[bool] = None  # NEW
+    name: Optional[str] = None  # Frontend sends 'name', map to card_name
+    personality: Optional[str] = None
+    background: Optional[str] = None
 
 
 class CardSearchRequest(BaseModel):

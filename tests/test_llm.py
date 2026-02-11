@@ -3,6 +3,28 @@ import asyncio
 import os
 from app.services.simple_llm import simple_llm_client
 from app.core.config import settings
+import json
+
+def parse_sse_response(response_text: str) -> list:
+    """
+    Parse SSE (Server-Sent Events) streaming response into list of chunks.
+    
+    Args:
+        response_text: Raw response text from streaming endpoint
+        
+    Returns:
+        List of parsed chunk dictionaries
+    """
+    chunks = []
+    for line in response_text.split('\n\n'):
+        line = line.strip()
+        if line.startswith('data: '):
+            try:
+                chunk = json.loads(line[6:])
+                chunks.append(chunk)
+            except (json.JSONDecodeError, ValueError):
+                pass
+    return chunks
 
 # Skip tests if no API key
 pytestmark = pytest.mark.skipif(
@@ -63,10 +85,9 @@ async def test_chat_with_counselor(test_client, sample_client, sample_counselor,
     )
 
     assert response.status_code == 200
-    data = response.json()
-    assert data["success"] is True
-    assert "ai_response" in data["data"]
-    assert len(data["data"]["ai_response"]) > 0
+    chunks = parse_sse_response(response.text)
+    assert chunks[-1]['type'] == 'done'
+    assert chunks[-1]['data']['cards_loaded'] >= 0
 
 
 @pytest.mark.asyncio

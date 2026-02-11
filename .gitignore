@@ -8,6 +8,11 @@
 *.sqlite
 *.sqlite3
 
+# Log files
+*.log
+server.log
+backend.log
+
 # Python
 __pycache__/
 *.py[cod]

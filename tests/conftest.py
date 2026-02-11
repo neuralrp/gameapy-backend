@@ -12,6 +12,7 @@ import os
 import sys
 import pytest
 import sqlite3
+import json
 from typing import Dict, Any, Optional
 from contextlib import contextmanager
 
@@ -274,6 +275,21 @@ def mock_llm_success(monkeypatch):
                     }]
                 }
         
+        async def chat_completion_stream(
+            self,
+            messages: list,
+            model: str = "mock-model",
+            temperature: float = 0.7,
+            max_tokens: int = 1000,
+            **kwargs
+        ):
+            """Yield a single content chunk for streaming."""
+            yield {
+                "choices": [{
+                    "delta": {"content": "Mock streaming response"}
+                }]
+            }
+        
         async def close(self):
             pass
     
@@ -392,6 +408,24 @@ def mock_llm_error(monkeypatch):
         ) -> Dict[str, Any]:
             raise Exception("Mock LLM API error")
         
+        async def chat_completion_stream(
+            self,
+            messages: list,
+            model: str = "mock-model",
+            temperature: float = 0.7,
+            max_tokens: int = 1000,
+            **kwargs
+        ):
+            """Yield an error chunk for error handling test."""
+            # In a real scenario, this would fail during streaming
+            # For testing, we yield content then raise to simulate mid-stream failure
+            yield {
+                "choices": [{
+                    "delta": {"content": "Partial response before error"}
+                }]
+            }
+            raise Exception("Mock LLM API error")
+        
         async def close(self):
             pass
     
@@ -450,6 +484,21 @@ def mock_llm_no_card(monkeypatch):
                     "message": {
                         "content": '{"card_type": null, "topic": null, "confidence": 0.0}'
                     }
+                }]
+            }
+        
+        async def chat_completion_stream(
+            self,
+            messages: list,
+            model: str = "mock-model",
+            temperature: float = 0.7,
+            max_tokens: int = 1000,
+            **kwargs
+        ):
+            """Yield empty content for no card response."""
+            yield {
+                "choices": [{
+                    "delta": {"content": ""}
                 }]
             }
         
@@ -551,6 +600,109 @@ def mock_card_generator_success(monkeypatch):
     yield
     
     card_gen_module.card_generator = original_gen
+
+
+@pytest.fixture
+def mock_llm_streaming_success(monkeypatch):
+    """
+    Mock SimpleLLMClient to return successful streaming responses.
+    
+    Yields multiple content chunks to simulate real streaming behavior.
+    """
+    from app.services.simple_llm_fixed import SimpleLLMClient
+    
+    class MockStreamingClient:
+        def __init__(self):
+            self.api_key = "mock_key"
+        
+        async def chat_completion(
+            self,
+            messages: list,
+            model: str = "mock-model",
+            temperature: float = 0.7,
+            max_tokens: int = 1000,
+            **kwargs
+        ) -> Dict[str, Any]:
+            return {
+                "choices": [{
+                    "message": {
+                        "content": "Mock response"
+                    }
+                }]
+            }
+        
+        async def chat_completion_stream(
+            self,
+            messages: list,
+            model: str = "mock-model",
+            temperature: float = 0.7,
+            max_tokens: int = 1000,
+            **kwargs
+        ):
+            """Yield multiple content chunks to simulate streaming."""
+            content_parts = ["Hello ", "there! ", "How ", "are ", "you?"]
+            for part in content_parts:
+                yield {
+                    "choices": [{
+                        "delta": {"content": part}
+                    }]
+                }
+        
+        async def close(self):
+            pass
+    
+    import app.services.simple_llm_fixed as llm_module
+    import app.api.chat as chat_module
+    import app.api.guide as guide_module
+    import app.api.session_analyzer as session_analyzer_module
+    import app.services.card_generator as card_gen_module
+    import app.services.card_updater as card_updater_module
+    import app.services.guide_system as guide_system_module
+    
+    mock_instance = MockStreamingClient()
+    
+    # Use monkeypatch to replace global instance
+    monkeypatch.setattr(llm_module, 'simple_llm_client', mock_instance)
+    
+    # Monkeypatch also in API modules that import it directly
+    monkeypatch.setattr(chat_module, 'simple_llm_client', mock_instance, raising=False)
+    monkeypatch.setattr(guide_module, 'simple_llm_client', mock_instance, raising=False)
+    monkeypatch.setattr(session_analyzer_module, 'simple_llm_client', mock_instance, raising=False)
+    
+    # Monkeypatch in services that import at module load time
+    monkeypatch.setattr(card_gen_module, 'simple_llm_client', mock_instance, raising=False)
+    monkeypatch.setattr(card_updater_module, 'simple_llm_client', mock_instance, raising=False)
+    monkeypatch.setattr(guide_system_module, 'simple_llm_client', mock_instance, raising=False)
+    
+    yield
+    
+    # Monkeypatch will automatically restore original when fixture exits
+
+
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
+
+def parse_sse_response(response_text: str) -> list:
+    """
+    Parse SSE (Server-Sent Events) streaming response into list of chunks.
+    
+    Args:
+        response_text: Raw response text from streaming endpoint
+        
+    Returns:
+        List of parsed chunk dictionaries
+    """
+    chunks = []
+    for line in response_text.split('\n\n'):
+        line = line.strip()
+        if line.startswith('data: '):
+            try:
+                chunk = json.loads(line[6:])
+                chunks.append(chunk)
+            except (json.JSONDecodeError, ValueError):
+                pass
+    return chunks
 
 
 # =============================================================================

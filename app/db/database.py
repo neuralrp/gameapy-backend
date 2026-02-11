@@ -364,6 +364,32 @@ class Database:
                 for row in cursor.fetchall()
             ]
 
+    def get_character_card_by_id(self, card_id: int) -> Optional[Dict]:
+        """Get a character card by ID."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, card_name, relationship_type, relationship_label, card_json, auto_update_enabled, last_updated, created_at, is_pinned
+                FROM character_cards
+                WHERE id = ?
+            """, (card_id,))
+
+            row = cursor.fetchone()
+            if row:
+                return {
+                    'id': row[0],
+                    'card_name': row[1],
+                    'relationship_type': row[2],
+                    'relationship_label': row[3],
+                    'card_json': row[4],
+                    'card': json.loads(row[4]),
+                    'auto_update_enabled': row[5],
+                    'last_updated': row[6],
+                    'created_at': row[7],
+                    'is_pinned': row[8]
+                }
+            return None
+
     def update_character_card(self, card_id: int, **kwargs) -> bool:
         """
         Update a character card with partial field updates.

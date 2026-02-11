@@ -188,15 +188,16 @@ def _build_counselor_system_prompt(counselor_data: Dict) -> str:
     return prompt
 
 
-@router.post("/chat", response_model=APIResponse)
+@router.post("/chat")
 async def chat_with_counselor(request: ChatRequest):
     """
-    Chat with a counselor character and get AI response.
+    Stream chat response from counselor.
     """
     try:
         session_id = request.session_id
         message_data = request.message_data
-        # Get session details
+        
+        # Get session details first
         session = db.get_session(session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
@@ -256,10 +257,10 @@ async def chat_with_counselor(request: ChatRequest):
         # 4. Get session messages for conversation history
         session_messages = db.get_session_messages(session_id, limit=10)
         
-        # 4. Format context for LLM
+        # 5. Format context for LLM
         context_str = _format_context_for_llm(context)
         
-        # 5. Build system prompt from counselor data
+        # 6. Build system prompt from counselor data
         system_prompt_content = _build_counselor_system_prompt(counselor_data)
         
         # Add context as system message
@@ -275,116 +276,49 @@ async def chat_with_counselor(request: ChatRequest):
                 "content": msg['content']
             })
         
-        # 6. Get AI response
-        response = await simple_llm_client.chat_completion(
-            messages=llm_messages,
-            temperature=0.7,
-            max_tokens=2000
-        )
-        
-        choices = response.get('choices', [])
-        ai_content = choices[0].get('message', {}).get('content', '') if choices else ''
-        
-        # Add AI response to session
-        if ai_content:
-            ai_message_id = db.add_message(
-                session_id=session_id,
-                role="assistant",
-                content=ai_content,
-                speaker="counselor"
-            )
-        else:
-            ai_message_id = None
-        
-        return APIResponse(
-            success=True,
-            message="Message processed successfully",
-            data={
-                "user_message_id": user_message_id,
-                "ai_message_id": ai_message_id,
-                "ai_response": ai_content or "",
-                "cards_loaded": context.get('total_cards_loaded', 0),
-                "counselor_switched": counselor_switched,
-                "new_counselor": new_counselor_data if counselor_switched else None
-            }
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/chat/stream")
-async def chat_with_counselor_stream(request: ChatRequest):
-    """
-    Stream chat response from counselor.
-    """
-    try:
-        session_id = request.session_id
-        message_data = request.message_data
-        # Get session details first
-        session = db.get_session(session_id)
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
-        
-        # Add user message to session
-        user_message_id = db.add_message(
-            session_id=session_id,
-            role=message_data.role,
-            content=message_data.content,
-            speaker="client"
-        )
-        
-        # Get session details
-        session_messages = db.get_session_messages(session_id, limit=10)
-        
-        # Get counselor profile from session
-        counselor_id = session.get('counselor_id')
-        if not counselor_id:
-            raise HTTPException(status_code=400, detail="Session has no counselor assigned")
-        
-        counselor = db.get_counselor_profile(counselor_id)
-        if not counselor:
-            raise HTTPException(status_code=404, detail=f"Counselor profile not found (id={counselor_id})")
-        
-        counselor_data = counselor['profile']['data']
-        
-        # Build system prompt from counselor data
-        system_prompt_content = _build_counselor_system_prompt(counselor_data)
-        
-        # Convert DB messages to LLM format
-        llm_messages = [{"role": "system", "content": system_prompt_content}]
-        for msg in session_messages:
-            role = "assistant" if msg['speaker'] == 'counselor' else "user"
-            llm_messages.append({
-                "role": role,
-                "content": msg['content']
-            })
-        
         from fastapi.responses import StreamingResponse
         
         async def generate():
-            # For now, use non-streaming for simplicity
-            response = await simple_llm_client.chat_completion(
-                messages=llm_messages,
-                temperature=0.7,
-                max_tokens=2000
-            )
+            """Generate streaming response."""
+            full_response = ""
             
-            choices = response.get('choices', [])
-            full_response = choices[0].get('message', {}).get('content', '') if choices else ''
-            
-            # Store the response in database
-            if full_response:
-                db.add_message(
-                    session_id=session_id,
-                    role="assistant", 
-                    content=full_response,
-                    speaker="counselor"
-                )
-            
-            yield f"data: {json.dumps({'content': full_response})}\n\n"
+            try:
+                # Stream LLM response
+                async for chunk in simple_llm_client.chat_completion_stream(
+                    messages=llm_messages,
+                    temperature=0.7,
+                    max_tokens=2000
+                ):
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    content = delta.get("content", "")
+                    if content:
+                        full_response += content
+                        # Send content chunk
+                        yield f"data: {json.dumps({'type': 'content', 'content': content})}\n\n"
+                
+                # Store full response in database
+                ai_message_id = None
+                if full_response:
+                    ai_message_id = db.add_message(
+                        session_id=session_id,
+                        role="assistant",
+                        content=full_response,
+                        speaker="counselor"
+                    )
+                
+                # Send final metadata chunk
+                metadata = {
+                    'type': 'done',
+                    'data': {
+                        'cards_loaded': context.get('total_cards_loaded', 0),
+                        'counselor_switched': counselor_switched,
+                        'new_counselor': new_counselor_data if counselor_switched else None
+                    }
+                }
+                yield f"data: {json.dumps(metadata)}\n\n"
+            except Exception as e:
+                # Send error as final chunk
+                yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
         
         return StreamingResponse(
             generate(),
@@ -396,7 +330,6 @@ async def chat_with_counselor_stream(request: ChatRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @router.post("/insights/extract", response_model=APIResponse)
 async def extract_insights(

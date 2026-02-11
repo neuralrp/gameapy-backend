@@ -8,6 +8,27 @@ import pytest
 import json
 from app.db.database import db
 
+def parse_sse_response(response_text: str) -> list:
+    """
+    Parse SSE (Server-Sent Events) streaming response into list of chunks.
+    
+    Args:
+        response_text: Raw response text from streaming endpoint
+        
+    Returns:
+        List of parsed chunk dictionaries
+    """
+    chunks = []
+    for line in response_text.split('\n\n'):
+        line = line.strip()
+        if line.startswith('data: '):
+            try:
+                chunk = json.loads(line[6:])
+                chunks.append(chunk)
+            except (json.JSONDecodeError, ValueError):
+                pass
+    return chunks
+
 
 @pytest.mark.e2e
 class TestE2EOnboarding:
@@ -56,8 +77,9 @@ class TestE2EOnboarding:
             }
         )
         assert chat_response.status_code == 200
-        data = chat_response.json()
-        assert data['data']['cards_loaded'] >= 1
+        chunks = parse_sse_response(chat_response.text)
+        assert chunks[-1]['type'] == 'done'
+        assert chunks[-1]['data']['cards_loaded'] >= 1
 
 
 @pytest.mark.e2e
@@ -101,8 +123,9 @@ class TestE2ECardSuggestionPin:
             }
         )
         assert chat_response.status_code == 200
-        data = chat_response.json()
-        assert data['data']['cards_loaded'] >= 1
+        chunks = parse_sse_response(chat_response.text)
+        assert chunks[-1]['type'] == 'done'
+        assert chunks[-1]['data']['cards_loaded'] >= 1
 
 
 @pytest.mark.e2e
@@ -185,8 +208,9 @@ class TestE2EWorldEventCreation:
             }
         )
         assert chat_response.status_code == 200
-        data = chat_response.json()
-        assert data['data']['cards_loaded'] >= 1
+        chunks = parse_sse_response(chat_response.text)
+        assert chunks[-1]['type'] == 'done'
+        assert chunks[-1]['data']['cards_loaded'] >= 1
 
 
 @pytest.mark.e2e
