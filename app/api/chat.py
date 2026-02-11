@@ -322,7 +322,7 @@ async def chat_with_counselor(request: ChatRequest):
         
         return StreamingResponse(
             generate(),
-            media_type="text/plain",
+            media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
         )
         
