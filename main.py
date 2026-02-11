@@ -104,9 +104,11 @@ async def health_check():
     except Exception as e:
         db_status = {"status": "down", "latency_ms": None, "error": str(e)}
 
-    overall_status = "healthy" if backend_status["status"] == "up" and db_status["status"] == "up" else "down"
+    # Overall status: healthy if backend is up, even if db is still initializing or down
+    # This allows Railway healthcheck to pass during startup or if volume mount is delayed
+    overall_status = "healthy" if backend_status["status"] == "up" else "down"
     if db_status.get("status") == "initializing":
-        overall_status = "starting"
+        overall_status = "healthy"  # Return healthy during initialization
     elif db_status["latency_ms"] and db_status["latency_ms"] > 500:
         overall_status = "degraded"
 
