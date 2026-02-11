@@ -51,7 +51,8 @@
         "gradient": "linear-gradient(135deg, #2C2C2C 0%, #3D3D3D 50%, #252525 100%)",
         "pattern": "stripes",
         "patternOpacity": 0.08,
-        "overlayColor": "rgba(0, 0, 0, 0.2)"
+        "overlayColor": "rgba(0, 0, 0, 0.2)",
+        "textColor": "#FFFFFF"
       },
       "icon": "lucide:thumbs-up"
     },
