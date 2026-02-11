@@ -1,6 +1,6 @@
 # Gameapy - Agent Quick Reference
 
-**Version**: 3.6.0 | **Last Updated**: 2026-02-11 (Railway healthcheck fix - startup event)
+**Version**: 3.7.0 | **Last Updated**: 2026-02-11 (Field-level timestamp metadata for cards)
 
 ---
 
@@ -22,6 +22,7 @@ gameapy-backend/          # Backend repo
 │   ├── db/               # Database operations (database.py)
 │   ├── services/         # LLM services (card_generator, guide_system, card_updater)
 │   ├── models/           # Pydantic schemas
+│   ├── utils/            # Utilities (card_metadata)
 │   └── config/           # Core truths, persona configs
 ├── data/personas/        # Persona JSON definitions
 ├── tests/                # Pytest test suite
@@ -52,7 +53,7 @@ gameapy-web/              # Web frontend repo
 
 **Completed Backend**: Phases 1-7 (All backend features + complete test infrastructure)
 **Completed Frontend**: Phases 0-6 (Web MVP complete + deployed to Vercel)
-**Latest Update**: Railway healthcheck fix - move DB init to startup event, CardInventoryModal iOS-style redesign, Easter egg "Summon Deirdre", schema migrations 004-006, auto-seed personas
+**Latest Update**: Field-level timestamp metadata - track individual field changes with smart recency indicators for LLM context, Railway healthcheck fix, CardInventoryModal iOS-style redesign, Easter egg "Summon Deirdre", schema migrations 004-006, auto-seed personas
 **Production Deploy**: Backend on Railway, Frontend on Vercel
 **Status**: Live at https://gameapy-web.vercel.app
 
@@ -74,6 +75,8 @@ gameapy-web/              # Web frontend repo
 - **Schema Migrations**: Auto-apply migrations 004-006 on startup
  - **Auto-Seed Personas**: Persona JSON → DB sync script with is_hidden support
  - **Streaming Chat**: SSE (Server-Sent Events) for real-time chat responses with metadata
+ - **Field-Level Timestamps**: CardMetadata utility tracks individual field changes with recency indicators ([new], [updated today], [established]) for LLM context
+ - **Smart Recency Indicators**: Minimal token overhead (~15-20 tokens per card) with temporal awareness for AI conversations
   - **Railway Persistent Volume**: Database persistence across deployments (character cards survive redeployments)
   - **Configurable Database Path**: `DATABASE_PATH` with Railway volume auto-detection (`RAILWAY_VOLUME_MOUNT_PATH`)
   - **Database Directory Auto-Creation**: Automatic `/app/data/` creation on Railway if missing
@@ -317,6 +320,7 @@ response = await simple_llm_client.chat_completion(
 | `backend/app/services/guide_system.py` | Organic guide conversation system |
 | `backend/app/services/card_updater.py` | Auto-update service |
 | `backend/app/services/simple_llm_fixed.py` | HTTP client for OpenRouter API |
+ | `backend/app/utils/card_metadata.py` | Field-level timestamp tracking for card entries |
  | `backend/app/models/schemas.py` | Pydantic models |
  | `backend/app/config/core_truths.py` | Universal principles for all personas (non-clinical AI companion) |
  | `backend/data/personas/*.json` | Persona definitions (who_you_are, your_vibe, your_worldview) |

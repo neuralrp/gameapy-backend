@@ -352,7 +352,11 @@ Guide Flow: Chat → "Create Cards" button → GuideScreen → Card Suggestion �
 - Auto-deploy on push to `main` branch
 - Production environment variables configured
 
-#### Latest Updates (2026-02-09)
+#### Latest Updates (2026-02-11)
+- **Field-Level Timestamps**: CardMetadata utility tracks individual field changes with smart recency indicators
+- **Recency Indicators**: [new], [updated today], [updated this week], [updated 2 weeks ago], [updated this month], [established]
+- **Source Tracking**: Distinguishes between LLM-created and user-edited fields for transparency
+- **LLM Context Enhancement**: Temporal awareness helps AI distinguish fresh vs. established information
 - **GuideScreen**: Organic card creation flow with conversational onboarding
 - **CounselorInfoModal**: View counselor details from chat screen
 - **Toast Component**: User notifications (success/error/info) with auto-dismiss
@@ -391,6 +395,50 @@ Guide Flow: Chat → "Create Cards" button → GuideScreen → Card Suggestion �
 2. **Always**: Pinned cards (user marks "keep in mind")
 3. **Always**: Cards mentioned in current session
 4. **Configurable**: Top N cards by recency (default: 5 sessions)
+
+### Field-Level Timestamps
+
+Cards now include embedded metadata tracking individual field timestamps:
+
+**Metadata Structure:**
+```json
+{
+  "_metadata": {
+    "personality": {
+      "first_seen": "2026-01-15T10:30:00",
+      "last_updated": "2026-02-11T14:22:00",
+      "update_count": 3,
+      "source": "llm"  // or "user"
+    }
+  }
+}
+```
+
+**Recency Indicators (shown to LLM):**
+- `[new]` - Updated in last hour
+- `[updated today]` - Updated today
+- `[updated this week]` - Updated within 7 days
+- `[updated 2 weeks ago]` - Updated within 14 days
+- `[updated this month]` - Updated within 30 days
+- `[established]` - Older than 30 days
+
+**Behavior:**
+- **LLM creates card**: Initialize all fields with current timestamp, source: "llm"
+- **LLM updates card**: Only update timestamp for changed fields, source: "llm"
+- **User edits card**: Reset all field timestamps, source: "user"
+
+**Benefits:**
+- ~15-20 tokens per card overhead (minimal cost)
+- AI can distinguish fresh vs. established information
+- Reduces contradictions in conversations
+- Transparent tracking of who modified what
+
+**Implementation:**
+- `app/utils/card_metadata.py` - Core CardMetadata class
+- `app/services/card_generator.py` - Initializes timestamps on creation
+- `app/services/card_updater.py` - Tracks field changes during LLM updates
+- `app/api/chat.py` - Formats context with recency indicators
+- `app/api/cards.py` - Resets metadata on user edits
 
 ---
 
