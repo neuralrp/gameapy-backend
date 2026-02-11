@@ -11,12 +11,13 @@ Environment Variables:
 
 Usage:
     from utils.seed_personas_auto import ensure_personas_sealed
-    ensure_personas_sealed()
+    ensure_personas_sealed(db_path)
 """
 
 import os
 import sys
 import logging
+import sqlite3
 
 logger = logging.getLogger(__name__)
 
@@ -26,21 +27,22 @@ def is_auto_seed_enabled():
     return os.getenv("AUTO_SEED_PERSONAS", "true").lower() in ("true", "1", "yes", "on")
 
 
-def has_counselors(db):
+def has_counselors(db_path: str):
     """Check if any counselors exist in the database."""
     try:
-        with db._get_connection() as conn:
-            cursor = conn.cursor()
-            result = cursor.execute(
-                "SELECT COUNT(*) FROM counselor_profiles WHERE is_active = TRUE"
-            ).fetchone()
-            return result[0] > 0
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        result = cursor.execute(
+            "SELECT COUNT(*) FROM counselor_profiles WHERE is_active = TRUE"
+        ).fetchone()
+        conn.close()
+        return result[0] > 0
     except Exception as e:
         logger.error(f"Error checking for existing counselors: {e}")
         return False
 
 
-def ensure_personas_sealed(db_path: str = None):
+def ensure_personas_sealed(db_path: str):
     """
     Ensure personas are seeded in the database.
     
@@ -49,28 +51,27 @@ def ensure_personas_sealed(db_path: str = None):
     the seed_personas script to import all personas from JSON files.
     
     Args:
-        db_path: Optional database path. If not provided, uses default "gameapy.db"
+        db_path: Database path to use (required, no default for safety)
     """
     if not is_auto_seed_enabled():
         logger.info("[AUTO-SEED] Auto-seeding disabled via AUTO_SEED_PERSONAS")
         return
     
-    # Import Database after ensuring we're in the right path
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from app.db.database import Database
-    
-    db = Database(db_path) if db_path else Database()
-    
     # Check if counselors already exist
-    if has_counselors(db):
+    if has_counselors(db_path):
         logger.info("[AUTO-SEED] Counselors already exist, skipping seed")
         return
     
     logger.info("[AUTO-SEED] No counselors found, starting seed process...")
     
     try:
-        # Import seed_personas module
+        # Import Database and seed_personas after ensuring we're in the right path
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from app.db.database import Database
         from scripts.seed_personas import load_persona_files, seed_personas
+        
+        # Create database instance with the provided db_path
+        db = Database(db_path)
         
         # Load all persona files
         personas = load_persona_files(name_filter=None)
@@ -107,4 +108,5 @@ def ensure_personas_sealed(db_path: str = None):
 if __name__ == "__main__":
     # Allow running this module directly for testing
     logging.basicConfig(level=logging.INFO)
-    ensure_personas_sealed()
+    from app.core.config import settings
+    ensure_personas_sealed(settings.database_path or "gameapy.db")

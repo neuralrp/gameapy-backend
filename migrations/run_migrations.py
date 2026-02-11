@@ -32,7 +32,7 @@ MIGRATIONS = [
         "id": "004",
         "name": "pivot_cleanup",
         "module": "migrations.004_pivot_cleanup",
-        "function": "apply"
+        "function": "migrate"
     },
     {
         "id": "005",
@@ -50,7 +50,7 @@ MIGRATIONS = [
 
 
 def run_migration(db_path: str, migration_id: str, migration_name: str, module_path: str, function_name: str):
-    """Run a single migration."""
+    """Run a single migration with explicit db_path."""
     logger.info(f"[MIGRATION {migration_id}] Starting: {migration_name}")
     
     try:
@@ -58,15 +58,26 @@ def run_migration(db_path: str, migration_id: str, migration_name: str, module_p
         module = __import__(module_path, fromlist=[function_name])
         migration_func = getattr(module, function_name)
         
-        # Run the migration
-        migration_func()
+        # Run the migration with db_path parameter
+        migration_func(db_path)
         
-        # Record successful migration (some migrations may have already recorded themselves)
-        try:
-            record_migration(db_path, migration_id, migration_name)
-        except sqlite3.IntegrityError:
-            # Migration already recorded, ignore
-            logger.debug(f"[MIGRATION {migration_id}] Already recorded in migration history")
+        # Record successful migration with retry for database lock
+        import time
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                record_migration(db_path, migration_id, migration_name)
+                break
+            except sqlite3.OperationalError as e:
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    logger.warning(f"[MIGRATION {migration_id}] Database locked, retrying ({attempt + 1}/{max_retries})...")
+                    time.sleep(0.5)
+                else:
+                    raise
+            except sqlite3.IntegrityError:
+                # Migration already recorded, ignore
+                logger.debug(f"[MIGRATION {migration_id}] Already recorded in migration history")
+                break
         
         logger.info(f"[MIGRATION {migration_id}] Completed successfully")
         
@@ -76,14 +87,21 @@ def run_migration(db_path: str, migration_id: str, migration_name: str, module_p
 
 
 def run_all_migrations():
-    """Run all pending migrations in order."""
+    """Run all pending migrations in order. Returns db_path for use by subsequent initialization."""
     logger.info("=" * 60)
     logger.info("Starting automatic migration runner")
     logger.info("=" * 60)
     
-    # Get database path
-    db = Database()
-    db_path = db.db_path
+    # Determine database path using same logic as Database class
+    from app.core.config import settings
+    db_path = settings.database_path or "gameapy.db"
+    
+    # Ensure database directory exists
+    db_dir = os.path.dirname(db_path)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
+        logger.info(f"Created database directory: {db_dir}")
+    
     logger.info(f"Database path: {db_path}")
     
     # Initialize migration tracker
@@ -111,7 +129,7 @@ def run_all_migrations():
         logger.info("All migrations are up to date!")
         logger.info(f"Applied: {', '.join(completed_migrations)}")
         logger.info("=" * 60)
-        return
+        return db_path
     
     logger.info(f"Found {len(pending_migrations)} pending migration(s)")
     logger.info("-" * 60)
@@ -129,6 +147,8 @@ def run_all_migrations():
     logger.info("=" * 60)
     logger.info("All migrations completed successfully!")
     logger.info("=" * 60)
+    
+    return db_path
 
 
 if __name__ == "__main__":

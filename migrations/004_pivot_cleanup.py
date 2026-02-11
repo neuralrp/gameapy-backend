@@ -10,14 +10,13 @@ import os
 from contextlib import contextmanager
 import logging
 
-DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'gameapy.db')
 logger = logging.getLogger(__name__)
 
 
 @contextmanager
-def get_connection():
-    """Get database connection."""
-    conn = sqlite3.connect(DB_PATH)
+def get_connection(db_path: str):
+    """Get database connection with explicit db_path."""
+    conn = sqlite3.connect(db_path)
     try:
         yield conn
         conn.commit()
@@ -28,10 +27,10 @@ def get_connection():
         conn.close()
 
 
-def is_applied():
+def is_applied(db_path: str):
     """Check if migration has already been applied."""
     try:
-        with get_connection() as conn:
+        with get_connection(db_path) as conn:
             # Check if is_pinned exists in any table
             for table in ['self_cards', 'character_cards', 'world_events']:
                 cursor = conn.execute(f"PRAGMA table_info({table})")
@@ -44,14 +43,10 @@ def is_applied():
         return False
 
 
-def apply():
-    """Execute migration."""
-    if is_applied():
-        logger.info("Migration 004 already applied")
-        return
-    
+def migrate(db_path: str):
+    """Execute migration with explicit db_path parameter."""
     try:
-        with get_connection() as conn:
+        with get_connection(db_path) as conn:
             # Ensure tables exist first
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS self_cards (
@@ -123,4 +118,5 @@ def apply():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    apply()
+    from app.core.config import settings
+    migrate(settings.database_path or "gameapy.db")

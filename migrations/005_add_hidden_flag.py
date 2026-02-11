@@ -13,17 +13,12 @@ import logging
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.db.database import Database
-
 logger = logging.getLogger(__name__)
 
 
-def migrate():
-    """Add is_hidden column to counselor_profiles table."""
+def migrate(db_path: str):
+    """Add is_hidden column to counselor_profiles table with explicit db_path."""
     logger.info("[MIGRATION 005] Adding is_hidden column to counselor_profiles")
-
-    db = Database()
-    db_path = db.db_path
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -44,18 +39,26 @@ def migrate():
             ADD COLUMN is_hidden BOOLEAN DEFAULT FALSE
         """)
 
-        # Mark Deirdre as hidden (Easter egg)
-        logger.info("[INFO] Marking Deirdre as hidden (Easter egg)...")
+        # Mark Deirdre as hidden (Easter egg) - if she exists
+        logger.info("[INFO] Checking for Deirdre to mark as hidden...")
         cursor.execute("""
-            UPDATE counselor_profiles
-            SET is_hidden = TRUE
-            WHERE LOWER(name) = 'deirdre'
+            SELECT COUNT(*) FROM counselor_profiles WHERE LOWER(name) = 'deirdre'
         """)
+        deirdre_exists = cursor.fetchone()[0]
+        
+        if deirdre_exists > 0:
+            cursor.execute("""
+                UPDATE counselor_profiles
+                SET is_hidden = TRUE
+                WHERE LOWER(name) = 'deirdre'
+            """)
+            logger.info("[INFO] Deirdre is now hidden from counselor selection")
+            logger.info("[INFO] Deirdre can still be summoned with 'Summon Deirdre' phrase")
+        else:
+            logger.info("[INFO] Deirdre not found in database yet (will be marked hidden when seeded)")
 
         conn.commit()
         logger.info("[OK] Migration completed successfully")
-        logger.info("[INFO] Deirdre is now hidden from counselor selection")
-        logger.info("[INFO] Deirdre can still be summoned with 'Summon Deirdre' phrase")
 
     except Exception as e:
         conn.rollback()
@@ -67,4 +70,5 @@ def migrate():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    migrate()
+    from app.core.config import settings
+    migrate(settings.database_path or "gameapy.db")

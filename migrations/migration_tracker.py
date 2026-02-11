@@ -39,9 +39,14 @@ def record_migration(db_path: str, migration_id: str, migration_name: str):
     """Record successful migration."""
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO migration_history (migration_id, migration_name)
-        VALUES (?, ?)
-    """, (migration_id, migration_name))
-    conn.commit()
-    conn.close()
+    try:
+        cursor.execute("""
+            INSERT INTO migration_history (migration_id, migration_name)
+            VALUES (?, ?)
+        """, (migration_id, migration_name))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        # Migration already recorded, ignore
+        pass
+    finally:
+        conn.close()

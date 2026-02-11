@@ -4,25 +4,56 @@ from fastapi.responses import JSONResponse
 import uvicorn
 import time
 from datetime import datetime
+import logging
+import sys
+from pathlib import Path
+
+# Configure logging first
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Add backend to path
+sys.path.insert(0, str(Path(__file__).parent))
+
+# Import Database first to apply base schema
+from app.db.database import Database
+
+# Determine database path
+from app.core.config import settings
+db_path = settings.database_path or "gameapy.db"
+
+# Initialize database (applies base schema via _ensure_schema)
+logger.info("=" * 60)
+logger.info("Initializing database with base schema...")
+logger.info("=" * 60)
+db = Database(db_path)
+logger.info(f"Database initialized: {db_path}")
+
+# Now run migrations on startup (after base schema is applied)
+from migrations.run_migrations import run_all_migrations
+
+# Execute migrations
+logger.info("=" * 60)
+logger.info("Running database migrations on startup...")
+logger.info("=" * 60)
+run_all_migrations()
+
+# Auto-seed personas if none exist
+from utils.seed_personas_auto import ensure_personas_sealed
+logger.info("=" * 60)
+logger.info("Checking for persona seeding...")
+logger.info("=" * 60)
+ensure_personas_sealed(db_path)
+
+# Now import routers (after database is fully initialized)
 from app.api.gameapy import router as gameapy_router
 from app.api.chat import router as chat_router
 from app.api.cards import router as cards_router
 from app.api.guide import router as guide_router
 from app.api.session_analyzer import router as session_analyzer_router
-from app.db.database import db
-
-# Run migrations on startup
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent))
-from migrations.run_migrations import run_all_migrations
-
-# Execute migrations before starting the app
-run_all_migrations()
-
-# Auto-seed personas if none exist
-from utils.seed_personas_auto import ensure_personas_sealed
-ensure_personas_sealed()
 
 app = FastAPI(
     title="Gameapy API",

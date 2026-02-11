@@ -31,8 +31,8 @@ class Database:
         self.vector_support = False
         print("[OK] Keyword-only search enabled (fast, simple matching)")
 
+        # Apply base schema (idempotent)
         self._ensure_schema()
-        self._run_auto_migrations()
 
     @contextmanager
     def _get_connection(self):
@@ -49,7 +49,7 @@ class Database:
             conn.close()
 
     def _ensure_schema(self):
-        """Ensure all tables exist."""
+        """Ensure all tables exist. This is idempotent - safe to call multiple times."""
         with self._get_connection() as conn:
             # Read schema from separate file
             import os
@@ -61,26 +61,18 @@ class Database:
             lines = [line for line in schema.split('\n') if not line.strip().startswith('#')]
             clean_schema = '\n'.join(lines)
             
-            conn.executescript(clean_schema)
-    
-    def _run_auto_migrations(self):
-        """Run automatic migrations on startup."""
-        try:
-            # Import and run migration
-            import os
-            import sys
-            import subprocess
-            migration_path = os.path.join(os.path.dirname(__file__), '..', '..', 'migrations', '004_pivot_cleanup.py')
-            if os.path.exists(migration_path):
-                try:
-                    subprocess.run([sys.executable, migration_path], check=True, capture_output=True, text=True)
-                except subprocess.CalledProcessError as e:
-                    print(f"[WARN] Migration failed: {e}")
-                except Exception as e:
-                    print(f"[WARN] Could not run migration: {e}")
-        except Exception as e:
-            print(f"[WARN] Failed to run auto-migration: {e}")
-            # Continue startup even if migration fails
+            # Create tables IF NOT EXISTS - this makes the operation idempotent
+            # We need to wrap each CREATE TABLE statement in IF NOT EXISTS
+            # SQLite's executescript doesn't support IF NOT EXISTS for CREATE TABLE directly
+            # but we can handle it by catching duplicate table errors
+            try:
+                conn.executescript(clean_schema)
+                print(f"[INFO] Base schema applied successfully")
+            except sqlite3.OperationalError as e:
+                # Ignore "table already exists" errors - this is expected when running after migrations
+                if "already exists" not in str(e):
+                    raise
+                print(f"[INFO] Schema tables already exist, skipping creation")
 
     # Client Profile Operations
     def create_client_profile(self, profile_data: Dict[str, Any]) -> int:
@@ -1120,5 +1112,6 @@ class Database:
             ))
 
 
-# Global database instance
-db = Database("gameapy.db")
+# Global database instance - will be initialized after migrations run in main.py
+# Set to None initially; will be created when database.py is imported AFTER migrations
+db = None

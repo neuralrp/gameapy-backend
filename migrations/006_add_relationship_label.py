@@ -13,17 +13,12 @@ import logging
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.db.database import Database
-
 logger = logging.getLogger(__name__)
 
 
-def migrate():
-    """Add relationship_label column to character_cards table."""
+def migrate(db_path: str):
+    """Add relationship_label column to character_cards table with explicit db_path."""
     logger.info("[MIGRATION 006] Adding relationship_label column to character_cards")
-
-    db = Database()
-    db_path = db.db_path
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -58,4 +53,5 @@ def migrate():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    migrate()
+    from app.core.config import settings
+    migrate(settings.database_path or "gameapy.db")

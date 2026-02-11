@@ -41,6 +41,12 @@ def run_migration(db_path: str = "gameapy.db"):
     cursor = conn.cursor()
 
     try:
+        # DEBUG: Check what tables exist
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        tables = [row[0] for row in cursor.fetchall()]
+        print(f"[DEBUG] Existing tables: {tables}")
+        print(f"[DEBUG] character_cards exists: {'character_cards' in tables}")
+        
         # Task 1: Extend character_cards
         print("\n--- Extending character_cards table ---")
 
