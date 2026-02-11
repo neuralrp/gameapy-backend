@@ -1,6 +1,6 @@
 # Gameapy - Agent Quick Reference
 
-**Version**: 3.4.0 | **Last Updated**: 2026-02-09 (GuideScreen + Keyword-only search)
+**Version**: 3.5.0 | **Last Updated**: 2026-02-11 (Streaming chat endpoint with SSE support)
 
 ---
 
@@ -52,7 +52,7 @@ gameapy-web/              # Web frontend repo
 
 **Completed Backend**: Phases 1-7 (All backend features + complete test infrastructure)
 **Completed Frontend**: Phases 0-6 (Web MVP complete + deployed to Vercel)
-**Latest Update**: Easter egg feature "Summon Deirdre" with hidden counselor flag, counselor-specific color theming
+**Latest Update**: CardInventoryModal iOS-style redesign, Easter egg "Summon Deirdre", schema migrations 004-006, auto-seed personas
 **Production Deploy**: Backend on Railway, Frontend on Vercel
 **Status**: Live at https://gameapy-web.vercel.app
 
@@ -65,10 +65,15 @@ gameapy-web/              # Web frontend repo
 - Auto-Update System: Invisible updates with per-card toggles
 - Context Assembly: Self + pinned + current + recent cards
 - Pytest Testing Infrastructure: File-based test DB, LLM mocking, test isolation
-- **All 89 tests passing** (100% pass rate, 68% code coverage)
+- **All 99 tests passing** (100% pass rate, 68% code coverage)
 - Deterministic test execution (no state pollution, per-request LLM clients)
+- **Human-Readable Context**: JSON cards converted to prose for better LLM comprehension
+- **Prompt Optimization**: Persona-first ordering, trimmed examples, compressed crisis protocol
 - **Easter Egg Feature**: "Summon Deirdre" in Marina chat switches to hidden counselor Deirdre
 - **Hidden Counselor Flag**: is_hidden column marks Easter egg counselors (not shown in selection screen)
+- **Schema Migrations**: Auto-apply migrations 004-006 on startup
+- **Auto-Seed Personas**: Persona JSON → DB sync script with is_hidden support
+- **Streaming Chat**: SSE (Server-Sent Events) for real-time chat responses with metadata
 
 ### What's Working (Frontend - Web MVP)
 - **Phase 0 Complete**: React + Vite + TypeScript project initialized
@@ -84,12 +89,16 @@ gameapy-web/              # Web frontend repo
 - **Toast Component**: User notifications (success/error/info)
 - **Redesign**: CounselorSelection as 2x2 color block grid
 - **Redesign**: ChatScreen with iMessage-style bubbles, counselor info link
+- **Redesign**: CardInventoryModal with modern iOS-style UI
 - **Auto-Session Analysis**: Every 5 messages, trigger card updates with toast notification
 - **Session Message Counting**: Track messages per session for analysis triggers
 - **Global State**: Guide flow state (showGuide, guideSessionId) in AppContext
 - **Easter Egg Feature**: "Summon Deirdre" in Marina chat switches to hidden counselor Deirdre
 - **Counselor Switching**: Frontend handles counselor_switched flag, updates state, shows toast
 - **Counselor-Specific Theming**: Colors automatically update based on counselor's visual settings
+- **Quick AI Card Creation**: Button in CardInventoryModal for instant card generation
+- **Full-Screen Inventory Mode**: Immersive card browsing experience
+- **Streaming Chat**: SSE-based real-time chat with smooth text rendering and metadata
 - GBA color palette configured in Tailwind CSS v4
 - VT323 retro font loaded from Google Fonts
 - Client ID auto-generation with localStorage persistence
@@ -139,7 +148,7 @@ Core philosophy:
 
 | File | Purpose | Status |
 |------|---------|--------|
-| **WEB_MVP_DEVELOPMENT_PLAN.md** | Web MVP implementation plan (6 phases, 15-20 hours) | Current, in progress |
+| **WEB_MVP_DEVELOPMENT_PLAN.md** | Web MVP implementation plan (6 phases, 15-20 hours) | Complete |
 | **FLUTTER_UI_DEVELOPMENT_PLAN.md** | Flutter implementation plan (ARCHIVED - replaced by web MVP) | Historical reference |
 
 ### Historical/Archive Documentation
@@ -261,8 +270,8 @@ response = await simple_llm_client.chat_completion(
 | 5 | ✅ | Entity Detection, Context Assembly, Guide System |
 | 6 | ✅ | Pytest Infrastructure (test isolation, LLM mocking, fixtures) |
 | 7 | ✅ | New Test Coverage (DB, API, E2E) - 89/89 tests passing (100%), 68% coverage |
-| 8 | ⏳ | Flutter UI Development |
-| 9 | ⏳ | Garden Minigame (optional) |
+| 8 | ❌ | Flutter UI Development (ARCHIVED - replaced by web MVP) |
+| 9 | ⏳ | Garden Minigame (optional - deferred) |
 
 ### Frontend Phases (Web MVP)
 
@@ -276,16 +285,18 @@ response = await simple_llm_client.chat_completion(
 | | 5 | ✅ | Polish & Mobile Optimization (responsive, loading states, animations) |
 | | 6 | ✅ | Testing, Bug Fixes, Vercel Deployment (production live) |
 
-### Archived Phases
-
-| Phase | Status | Key Deliverables |
-|-------|--------|------------------|
-| | 8 | ❌ | Flutter UI Development (ARCHIVED - replaced by web MVP) |
-| | 9 | ❌ | Garden Minigame (optional - deferred) |
-
 ---
 
 ## Critical Files
+
+### Documentation
+
+| File | Purpose |
+|------|---------|
+| `AGENTS.md` | LLM-optimized project documentation (this file) |
+| `TECHNICAL.md` | Detailed technical breakdown |
+| `CHANGELOG.md` | Project changelog with version history |
+| `README.md` | Project overview for GitHub |
 
 ### Backend Core
 
@@ -387,8 +398,11 @@ response = await simple_llm_client.chat_completion(
 - `POST /analyze` - Analyze session and auto-update cards
 
 **Chat** (`/api/v1/chat`):
-- `POST /chat` - Send message (auto-loads context)
-- Returns: `{"response": "...", "cards_loaded": N}`
+- `POST /chat` - Send message with streaming SSE response (auto-loads context)
+- Returns SSE stream with chunks:
+  - Content: `{"type": "content", "content": "..."}`
+  - Done: `{"type": "done", "data": {"cards_loaded": N, "counselor_switched": bool, "new_counselor": {...}}}`
+  - Error: `{"type": "error", "error": "..."}`
 
 **Farm** (`/api/v1/farm/*`):
 - All endpoints available but hidden from main flow (optional)
@@ -486,38 +500,6 @@ SQLite Database
 - Framework: Vite
 - Environment Variable: `VITE_API_BASE_URL=https://gameapy-backend-production.up.railway.app`
 - Auto-deploy on push to `main` branch
-
----
-
-## Important: When Web MVP is Complete
-
-After completing Web MVP development and having a working prototype:
-
-1. **Update AGENTS.md**:
-    - Mark Phases 2-6 as ✅ Complete
-    - Add web files to "Frontend Core" in "Critical Files"
-    - Update "Current Status" with frontend completion
-    - Update "Phase Status" table (Frontend Phases)
-
-2. **Update TECHNICAL.md**:
-    - Add Web MVP implementation section
-    - Document React architecture and state management
-    - Add frontend-specific design patterns
-    - Update "Tech Stack" section with React/Vite/Tailwind
-
-3. **Update README.md**:
-    - Add web app setup instructions
-    - Update "Current Status" to show both backend and frontend complete
-    - Add deployment instructions (Vercel)
-    - Add screenshots or demo link
-    - Update "Roadmap"
-
-4. **Deploy to Vercel**:
-    - Push gameapy-web to GitHub
-    - Connect to Vercel for automatic deployments
-    - Configure environment variables (API_BASE_URL)
-
-5. **DO NOT** create phase summary files
 
 ---
 
