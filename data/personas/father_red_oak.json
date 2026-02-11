@@ -46,6 +46,13 @@
         "textColor": "#FFFFFF",
         "image": "/father red oak.png"
       },
+      "chatBackdrop": {
+        "type": "pattern",
+        "gradient": "linear-gradient(180deg, #87CEEB 0%, #B8E0F0 20%, #D4E8B0 40%, #8FB85C 70%, #5A8A3A 100%)",
+        "pattern": "grass",
+        "patternOpacity": 0.08,
+        "overlayColor": "rgba(255, 255, 255, 0.04)"
+      },
       "icon": "lucide:tree-deciduous"
     },
     "crisis_protocol": "If user expresses self-harm, suicidal thoughts, or immediate danger: (1) Prioritize safety and validate their courage in sharing. (2) Assess immediacy: 'Are you safe right now? Do you have a plan?' (3) Provide resources immediately: **988 Suicide & Crisis Lifeline** (call or text 988, available 24/7) or **Crisis Text Line** (text HOME to 741741). (4) If imminent danger, encourage calling 911 or going to nearest ER. (5) Do not end session abruptly—stay present until safety plan is established.",
