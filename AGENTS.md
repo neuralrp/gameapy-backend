@@ -1,6 +1,6 @@
 # Gameapy - Agent Quick Reference
 
-**Version**: 3.5.0 | **Last Updated**: 2026-02-11 (Streaming chat endpoint with SSE support)
+**Version**: 3.6.0 | **Last Updated**: 2026-02-11 (Railway healthcheck fix - startup event)
 
 ---
 
@@ -52,7 +52,7 @@ gameapy-web/              # Web frontend repo
 
 **Completed Backend**: Phases 1-7 (All backend features + complete test infrastructure)
 **Completed Frontend**: Phases 0-6 (Web MVP complete + deployed to Vercel)
-**Latest Update**: CardInventoryModal iOS-style redesign, Easter egg "Summon Deirdre", schema migrations 004-006, auto-seed personas
+**Latest Update**: Railway healthcheck fix - move DB init to startup event, CardInventoryModal iOS-style redesign, Easter egg "Summon Deirdre", schema migrations 004-006, auto-seed personas
 **Production Deploy**: Backend on Railway, Frontend on Vercel
 **Status**: Live at https://gameapy-web.vercel.app
 
@@ -74,10 +74,11 @@ gameapy-web/              # Web frontend repo
 - **Schema Migrations**: Auto-apply migrations 004-006 on startup
  - **Auto-Seed Personas**: Persona JSON → DB sync script with is_hidden support
  - **Streaming Chat**: SSE (Server-Sent Events) for real-time chat responses with metadata
- - **Railway Persistent Volume**: Database persistence across deployments (character cards survive redeployments)
- - **Configurable Database Path**: `DATABASE_PATH` with Railway volume auto-detection (`RAILWAY_VOLUME_MOUNT_PATH`)
- - **Database Directory Auto-Creation**: Automatic `/app/data/` creation on Railway if missing
- - **Database Path Logging**: Startup logs show `[INFO] Database path: <path>` for debugging
+  - **Railway Persistent Volume**: Database persistence across deployments (character cards survive redeployments)
+  - **Configurable Database Path**: `DATABASE_PATH` with Railway volume auto-detection (`RAILWAY_VOLUME_MOUNT_PATH`)
+  - **Database Directory Auto-Creation**: Automatic `/app/data/` creation on Railway if missing
+  - **Database Path Logging**: Startup logs show `[INFO] Database path: <path>` for debugging
+  - **Railway Healthcheck Fix**: Database initialization moved to FastAPI startup event, allowing immediate healthcheck response before volume mount
 
 ### What's Working (Frontend - Web MVP)
 - **Phase 0 Complete**: React + Vite + TypeScript project initialized

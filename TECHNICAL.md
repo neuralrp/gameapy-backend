@@ -1,7 +1,7 @@
 # Gameapy Technical Documentation
 
-**Version**: 3.4.0  
-**Last Updated**: 2026-02-09  
+**Version**: 3.6.0
+**Last Updated**: 2026-02-11
 **Status**: Backend Complete (Phases 1-7), Web MVP Complete (Phases 0-6), Production Live
 
 ---
@@ -665,6 +665,10 @@ SQLite Database
   - Configuration: `DATABASE_PATH` in `Settings` class with fallback to `gameapy.db` (local)
   - Setup guide: `RAILWAY_VOLUME_SETUP.md` with CLI commands
   - Resolves: Character cards deleted on deployment (ephemeral storage issue)
+- **Healthcheck Fix**: Database initialization moved to FastAPI startup event
+  - App starts immediately and responds to healthchecks
+  - Database initialization runs in background after volume is mounted
+  - Resolves: "service unavailable" errors during Railway deployment
 
 ### Frontend Deployment (Vercel)
 - Repository: https://github.com/NeuralRP/gameapy-web
