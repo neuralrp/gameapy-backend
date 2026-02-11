@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Backend (gameapy-backend)
 
 #### Added
+- **Railway Persistent Volume Support**: Database persistence across deployments
+  - `DATABASE_PATH` configuration in Settings class
+  - Auto-detection of `RAILWAY_VOLUME_MOUNT_PATH` environment variable
+  - Configurable database path in `Database.__init__()` (Railway: `/app/data/gameapy.db`, Local: `gameapy.db`)
+  - Automatic directory creation for database file if missing
+  - Database path logging for debugging: `[INFO] Database path: <path>`
+  - `railway.json` configuration file for Railway documentation
+  - `RAILWAY_VOLUME_SETUP.md` comprehensive CLI setup guide
+  - Fixes critical issue where character cards were deleted on every deployment
 - **Streaming Chat**: SSE (Server-Sent Events) for real-time chat responses
   - `chat_completion_stream()` method in SimpleLLMClient for streaming LLM responses
   - Streaming `/api/v1/chat/chat` endpoint with real-time chunk delivery

@@ -72,8 +72,12 @@ gameapy-web/              # Web frontend repo
 - **Easter Egg Feature**: "Summon Deirdre" in Marina chat switches to hidden counselor Deirdre
 - **Hidden Counselor Flag**: is_hidden column marks Easter egg counselors (not shown in selection screen)
 - **Schema Migrations**: Auto-apply migrations 004-006 on startup
-- **Auto-Seed Personas**: Persona JSON → DB sync script with is_hidden support
-- **Streaming Chat**: SSE (Server-Sent Events) for real-time chat responses with metadata
+ - **Auto-Seed Personas**: Persona JSON → DB sync script with is_hidden support
+ - **Streaming Chat**: SSE (Server-Sent Events) for real-time chat responses with metadata
+ - **Railway Persistent Volume**: Database persistence across deployments (character cards survive redeployments)
+ - **Configurable Database Path**: `DATABASE_PATH` with Railway volume auto-detection (`RAILWAY_VOLUME_MOUNT_PATH`)
+ - **Database Directory Auto-Creation**: Automatic `/app/data/` creation on Railway if missing
+ - **Database Path Logging**: Startup logs show `[INFO] Database path: <path>` for debugging
 
 ### What's Working (Frontend - Web MVP)
 - **Phase 0 Complete**: React + Vite + TypeScript project initialized
@@ -297,6 +301,7 @@ response = await simple_llm_client.chat_completion(
 | `TECHNICAL.md` | Detailed technical breakdown |
 | `CHANGELOG.md` | Project changelog with version history |
 | `README.md` | Project overview for GitHub |
+| `RAILWAY_VOLUME_SETUP.md` | Railway persistent volume setup guide with CLI commands |
 
 ### Backend Core
 
@@ -318,6 +323,7 @@ response = await simple_llm_client.chat_completion(
  | `backend/migrations/005_add_hidden_flag.py` | Add is_hidden column for Easter egg counselors |
  | `backend/schema.sql` | Database schema |
  | `backend/pytest.ini` | Pytest configuration (asyncio, markers, test discovery, coverage) |
+ | `backend/railway.json` | Railway configuration (volume mount path, deployment settings) |
 
 ### Frontend Core (Web MVP)
 

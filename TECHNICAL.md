@@ -396,6 +396,46 @@ Guide Flow: Chat → "Create Cards" button → GuideScreen → Card Suggestion �
 
 ## Database Schema
 
+### Database Configuration
+
+The database path is configurable via environment and supports Railway persistent volumes:
+
+```python
+# Priority order (app/core/config.py)
+1. DATABASE_PATH env variable (explicit override)
+2. RAILWAY_VOLUME_MOUNT_PATH env variable (Railway auto-injected)
+3. Default: "gameapy.db" (local development)
+```
+
+**Production (Railway with volume):**
+- Path: `/app/data/gameapy.db`
+- Volume: `gameapy-backend-volume`
+- Mount: `/app/data`
+- Environment: `RAILWAY_VOLUME_MOUNT_PATH=/app/data` (auto-injected)
+
+**Development (Local):**
+- Path: `gameapy.db` (current directory)
+- No volume needed
+
+**Database Initialization** (`app/db/database.py`):
+```python
+def __init__(self, db_path: Optional[str] = None):
+    if db_path is None:
+        from app.core.config import settings
+        db_path = settings.database_path or "gameapy.db"
+    
+    self.db_path = db_path
+    
+    # Log database location for debugging
+    print(f"[INFO] Database path: {db_path}")
+    
+    # Ensure database directory exists
+    db_dir = os.path.dirname(db_path)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
+        print(f"[INFO] Created database directory: {db_dir}")
+```
+
 ### Entity Relationships
 
 ```
@@ -616,8 +656,15 @@ SQLite Database
 - Runtime: Python 3.11+
 - Build command: `pip install -r requirements.txt`
 - Start command: `python main.py`
-- Environment variables: `OPENROUTER_API_KEY`
+- Environment variables: `OPENROUTER_API_KEY`, `RAILWAY_VOLUME_MOUNT_PATH` (auto-injected)
 - Auto-deploy on push to `main` branch
+- **Persistent Volume**: Railway volume mounted at `/app/data` for database persistence
+  - Database path: `/app/data/gameapy.db` (production)
+  - Auto-created directory: `/app/data/`
+  - Database location logged on startup: `[INFO] Database path: <path>`
+  - Configuration: `DATABASE_PATH` in `Settings` class with fallback to `gameapy.db` (local)
+  - Setup guide: `RAILWAY_VOLUME_SETUP.md` with CLI commands
+  - Resolves: Character cards deleted on deployment (ephemeral storage issue)
 
 ### Frontend Deployment (Vercel)
 - Repository: https://github.com/NeuralRP/gameapy-web
