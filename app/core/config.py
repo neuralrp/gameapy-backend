@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite:///gameapy.db"
     test_database_url: str = "sqlite:///gameapy_test.db"
+    database_path: Optional[str] = None
     
     # OpenRouter
     openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
@@ -44,6 +45,18 @@ class Settings(BaseSettings):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._validate_recent_card_limit()
+        
+        # Set database path with Railway volume support
+        if not self.database_path:
+            # Check for Railway volume mount path (auto-injected)
+            railway_volume = os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
+            if railway_volume:
+                # Use Railway persistent volume
+                self.database_path = os.path.join(railway_volume, "gameapy.db")
+                os.makedirs(railway_volume, exist_ok=True)  # Ensure directory exists
+            else:
+                # Default to local development path
+                self.database_path = "gameapy.db"
     
     def _validate_recent_card_limit(self):
         """Validate and enforce recent_card_session_limit."""
