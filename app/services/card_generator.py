@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any, List
 from ..core.config import settings
 from ..services.simple_llm_fixed import simple_llm_client
 from ..db.database import db
+from ..utils.card_metadata import initialize_card_metadata
 
 
 class CardGenerator:
@@ -61,6 +62,9 @@ class CardGenerator:
                 duration_ms = int((time.time() - start_time) * 1000)
                 content = response['choices'][0]['message']['content']
                 parsed_card = self._parse_llm_response(content, card_type)
+                
+                # Initialize metadata for all fields in the generated card
+                parsed_card_with_metadata = initialize_card_metadata(parsed_card, source='llm')
 
                 await db._log_performance_metric(
                     operation="card_generate",
@@ -72,7 +76,7 @@ class CardGenerator:
 
                 return {
                     "card_type": card_type,
-                    "generated_card": parsed_card,
+                    "generated_card": parsed_card_with_metadata,
                     "preview": True,
                     "fallback": False
                 }

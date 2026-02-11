@@ -40,7 +40,7 @@ class Database:
     @contextmanager
     def _get_connection(self):
         """Context manager for database connections."""
-        conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        conn = sqlite3.connect(self.db_path, check_same_thread=False, detect_types=sqlite3.PARSE_DECLTYPES)
         conn.row_factory = sqlite3.Row  # Enable dict-like access
         try:
             yield conn

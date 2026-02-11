@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any, List
 from ..core.config import settings
 from ..services.simple_llm_fixed import simple_llm_client
 from ..db.database import db
+from ..utils.card_metadata import update_card_fields
 
 
 class CardUpdater:
@@ -317,9 +318,12 @@ Do not include any text outside of JSON."""
                     applied_fields.append(field)
 
         if applied_fields:
+            # Update metadata for changed fields
+            card_json_with_metadata = update_card_fields(card_json, set(applied_fields), source='llm')
+            
             db.update_self_card(
                 client_id=self_card['client_id'],
-                card_json=json.dumps(card_json),
+                card_json=json.dumps(card_json_with_metadata),
                 changed_by='system'
             )
 
@@ -373,9 +377,12 @@ Do not include any text outside of JSON."""
                     applied_fields.append(field)
 
         if applied_fields:
+            # Update metadata for changed fields
+            card_data_with_metadata = update_card_fields(card_data, set(applied_fields), source='llm')
+            
             db.update_character_card(
                 card_id=card_id,
-                card_json=json.dumps(card_data),
+                card_json=json.dumps(card_data_with_metadata),
                 changed_by='system'
             )
 
@@ -423,6 +430,25 @@ Do not include any text outside of JSON."""
                     applied_fields.append(field)
 
         if applied_fields:
+            # For world events, we need to rebuild the full JSON with metadata
+            card_json = {
+                'title': event_data['title'],
+                'event_type': event_data['event_type'],
+                'key_array': json.loads(event_data['key_array']) if isinstance(event_data['key_array'], str) else event_data['key_array'],
+                'description': event_data['description'],
+                'is_canon_law': event_data.get('is_canon_law', False),
+                'resolved': event_data.get('resolved', False)
+            }
+            
+            # Apply updates
+            if 'description' in update_kwargs:
+                card_json['description'] = update_kwargs['description']
+            if 'key_array' in update_kwargs:
+                card_json['key_array'] = update_kwargs['key_array'] if isinstance(update_kwargs['key_array'], list) else json.loads(update_kwargs['key_array'])
+            
+            # Update metadata for changed fields
+            card_json_with_metadata = update_card_fields(card_json, set(applied_fields), source='llm')
+            
             if 'key_array' in update_kwargs and isinstance(update_kwargs['key_array'], list):
                 update_kwargs['key_array'] = json.dumps(update_kwargs['key_array'])
             update_kwargs['changed_by'] = 'system'

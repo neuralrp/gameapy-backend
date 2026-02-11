@@ -17,6 +17,7 @@ from ..models.schemas import (
 )
 from ..services.card_generator import card_generator
 from ..db.database import db
+from ..utils.card_metadata import reset_card_metadata
 from datetime import datetime
 
 
@@ -182,9 +183,11 @@ async def update_card(card_id: int, request: CardUpdateRequest) -> APIResponse:
                 updated_data['background'] = request_dict.pop('background')
 
             # Serialize to JSON string and save
+            # Reset metadata when user edits
+            updated_data_with_metadata = reset_card_metadata(updated_data)
             success = db.update_self_card(
                 client_id=client_id,
-                card_json=json.dumps(updated_data),
+                card_json=json.dumps(updated_data_with_metadata),
                 changed_by='user'
             )
 
@@ -225,6 +228,11 @@ async def update_card(card_id: int, request: CardUpdateRequest) -> APIResponse:
                     update_kwargs['card_json'] = json.dumps(updated_card_data)
 
             if update_kwargs:
+                # Reset metadata when user edits
+                if 'card_json' in update_kwargs:
+                    card_data = json.loads(update_kwargs['card_json'])
+                    card_data_with_metadata = reset_card_metadata(card_data)
+                    update_kwargs['card_json'] = json.dumps(card_data_with_metadata)
                 update_kwargs['changed_by'] = 'user'
                 success = db.update_character_card(card_id, **update_kwargs)
 

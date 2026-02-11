@@ -17,6 +17,7 @@ from app.services.entity_detector import entity_detector
 from app.services.context_assembler import context_assembler
 from app.core.config import settings
 from app.config.core_truths import get_core_truths
+from app.utils.card_metadata import CardMetadata
 
 router = APIRouter()
 
@@ -47,73 +48,103 @@ def _format_context_for_llm(context: Dict) -> str:
 
 
 def _format_self_card_prose(card: Dict) -> str:
-    """Format self card as human-readable prose."""
+    """Format self card as human-readable prose with recency indicators."""
     payload = card.get('payload', {})
+    
+    # Get metadata for recency indicators
+    metadata = CardMetadata(payload) if '_metadata' in payload else None
     
     parts = ["## About This User"]
     
     if payload.get('name'):
-        parts.append(f"Name: {payload['name']}")
+        name = payload['name']
+        recency = f" {metadata.get_recency_indicator('name')}" if metadata else ""
+        parts.append(f"Name: {name}{recency}")
     
     if payload.get('personality'):
-        parts.append(f"Personality: {payload['personality']}")
+        personality = payload['personality']
+        recency = f" {metadata.get_recency_indicator('personality')}" if metadata else ""
+        parts.append(f"Personality: {personality}{recency}")
     
     if payload.get('traits'):
-        parts.append(f"Traits: {', '.join(payload['traits'][:5])}")
+        traits = ', '.join(payload['traits'][:5])
+        recency = f" {metadata.get_recency_indicator('traits')}" if metadata else ""
+        parts.append(f"Traits: {traits}{recency}")
     
     if payload.get('interests'):
-        parts.append(f"Interests: {', '.join(payload['interests'][:5])}")
+        interests = ', '.join(payload['interests'][:5])
+        recency = f" {metadata.get_recency_indicator('interests')}" if metadata else ""
+        parts.append(f"Interests: {interests}{recency}")
     
     if payload.get('values'):
-        parts.append(f"Values: {', '.join(payload['values'][:5])}")
+        values = ', '.join(payload['values'][:5])
+        recency = f" {metadata.get_recency_indicator('values')}" if metadata else ""
+        parts.append(f"Values: {values}{recency}")
     
     if payload.get('goals'):
         goals = payload['goals'][:3]
         goal_str = '; '.join([g.get('goal', g) if isinstance(g, dict) else g for g in goals])
-        parts.append(f"Goals: {goal_str}")
+        recency = f" {metadata.get_recency_indicator('goals')}" if metadata else ""
+        parts.append(f"Goals: {goal_str}{recency}")
     
     if payload.get('triggers'):
-        parts.append(f"Triggers: {', '.join(payload['triggers'][:3])}")
+        triggers = ', '.join(payload['triggers'][:3])
+        recency = f" {metadata.get_recency_indicator('triggers')}" if metadata else ""
+        parts.append(f"Triggers: {triggers}{recency}")
     
     if payload.get('coping_strategies'):
-        parts.append(f"Coping: {', '.join(payload['coping_strategies'][:3])}")
+        coping = ', '.join(payload['coping_strategies'][:3])
+        recency = f" {metadata.get_recency_indicator('coping_strategies')}" if metadata else ""
+        parts.append(f"Coping: {coping}{recency}")
     
     return '\n'.join(parts)
 
 
 def _format_card_prose(card: Dict) -> str:
-    """Format character/world card as human-readable prose."""
+    """Format character/world card as human-readable prose with recency indicators."""
     card_type = card.get('card_type', '')
     payload = card.get('payload', {})
+    
+    # Get metadata for recency indicators
+    metadata = CardMetadata(payload) if '_metadata' in payload else None
     
     if card_type == 'character':
         parts = []
         name = payload.get('name', 'Someone')
-        parts.append(f"**{name}**")
+        name_recency = f" {metadata.get_recency_indicator('name')}" if metadata else ""
+        parts.append(f"**{name}**{name_recency}")
         
         rel_type = payload.get('relationship_type', 'person')
-        parts.append(f"Relationship: {rel_type}")
+        rel_recency = f" {metadata.get_recency_indicator('relationship_type')}" if metadata else ""
+        parts.append(f"Relationship: {rel_type}{rel_recency}")
         
         if payload.get('personality'):
-            parts.append(f"Personality: {payload['personality']}")
+            personality = payload['personality']
+            personality_recency = f" {metadata.get_recency_indicator('personality')}" if metadata else ""
+            parts.append(f"Personality: {personality}{personality_recency}")
         
         if payload.get('emotional_state', {}).get('user_to_other'):
             emo = payload['emotional_state']['user_to_other']
+            emo_recency = f" {metadata.get_recency_indicator('emotional_state.user_to_other')}" if metadata else ""
             parts.append(
                 f"Dynamic — Trust: {emo.get('trust', 'N/A')}/100, "
                 f"Conflict: {emo.get('conflict', 'N/A')}/100, "
-                f"Bond: {emo.get('emotional_bond', 'N/A')}/100"
+                f"Bond: {emo.get('emotional_bond', 'N/A')}/100{emo_recency}"
             )
         
         if payload.get('key_events'):
             events = payload['key_events'][:2]
+            events_recency = f" {metadata.get_recency_indicator('key_events')}" if metadata else ""
             for ev in events:
                 parts.append(f"- {ev.get('event', '')} ({ev.get('date', 'unknown')})")
+            if events_recency:
+                parts[-1] += events_recency
         
         if payload.get('user_feelings'):
             feelings = payload['user_feelings'][:2]
             feeling_str = ', '.join([f['feeling'] for f in feelings])
-            parts.append(f"User feels: {feeling_str}")
+            feelings_recency = f" {metadata.get_recency_indicator('user_feelings')}" if metadata else ""
+            parts.append(f"User feels: {feeling_str}{feelings_recency}")
         
         return '\n'.join(parts)
     
@@ -121,16 +152,22 @@ def _format_card_prose(card: Dict) -> str:
         parts = []
         title = payload.get('title', 'Event')
         event_type = payload.get('event_type', 'event')
-        parts.append(f"**{title}** — {event_type}")
+        title_recency = f" {metadata.get_recency_indicator('title')}" if metadata else ""
+        parts.append(f"**{title}** — {event_type}{title_recency}")
         
         if payload.get('description'):
-            parts.append(payload['description'][:200])
+            description = payload['description'][:200]
+            desc_recency = f" {metadata.get_recency_indicator('description')}" if metadata else ""
+            parts.append(f"{description}{desc_recency}")
         
         if payload.get('key_array'):
-            parts.append(f"Key themes: {', '.join(payload['key_array'][:5])}")
+            themes = ', '.join(payload['key_array'][:5])
+            themes_recency = f" {metadata.get_recency_indicator('key_array')}" if metadata else ""
+            parts.append(f"Key themes: {themes}{themes_recency}")
         
         resolved = payload.get('resolved', False)
-        parts.append(f"Status: {'resolved' if resolved else 'ongoing'}")
+        resolved_recency = f" {metadata.get_recency_indicator('resolved')}" if metadata else ""
+        parts.append(f"Status: {'resolved' if resolved else 'ongoing'}{resolved_recency}")
         
         return '\n'.join(parts)
     
