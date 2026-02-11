@@ -43,7 +43,8 @@
         "backgroundColor": "#E8B478",
         "hoverBackgroundColor": "#E8B478CC",
         "borderColor": "#B88448",
-        "textColor": "#483018"
+        "textColor": "#483018",
+        "image": "/redcross.png"
       },
       "icon": "lucide:heart-pulse"
     },

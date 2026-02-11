@@ -43,7 +43,8 @@
         "backgroundColor": "#A85A38",
         "hoverBackgroundColor": "#A85A38CC",
         "borderColor": "#783818",
-        "textColor": "#FFFFFF"
+        "textColor": "#FFFFFF",
+        "image": "/father red oak.png"
       },
       "icon": "lucide:tree-deciduous"
     },

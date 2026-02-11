@@ -43,7 +43,8 @@
         "backgroundColor": "#F8B432",
         "hoverBackgroundColor": "#F8B432CC",
         "borderColor": "#C48820",
-        "textColor": "#483018"
+        "textColor": "#483018",
+        "image": "/coach san mateo.png"
       },
       "icon": "lucide:thumbs-up"
     },

@@ -44,7 +44,8 @@
         "backgroundColor": "#78C0D8",
         "hoverBackgroundColor": "#78C0D8CC",
         "borderColor": "#4898A8",
-        "textColor": "#483018"
+        "textColor": "#483018",
+        "image": "/mermaid.png"
       },
       "icon": "lucide:droplets"
     },
