@@ -25,28 +25,45 @@ from app.db.database import Database
 from app.core.config import settings
 db_path = settings.database_path or "gameapy.db"
 
-# Initialize database (applies base schema via _ensure_schema)
-logger.info("=" * 60)
-logger.info("Initializing database with base schema...")
-logger.info("=" * 60)
-db = Database(db_path)
-logger.info(f"Database initialized: {db_path}")
+# Initialize db as None - will be set during startup event
+db = None
 
-# Now run migrations on startup (after base schema is applied)
-from migrations.run_migrations import run_all_migrations
+app = FastAPI(
+    title="Gameapy API",
+    description="Retro Therapeutic Storytelling App Backend",
+    version="0.1.0"
+)
 
-# Execute migrations
-logger.info("=" * 60)
-logger.info("Running database migrations on startup...")
-logger.info("=" * 60)
-run_all_migrations()
+@app.on_event("startup")
+async def startup_event():
+    global db
 
-# Auto-seed personas if none exist
-from utils.seed_personas_auto import ensure_personas_sealed
-logger.info("=" * 60)
-logger.info("Checking for persona seeding...")
-logger.info("=" * 60)
-ensure_personas_sealed(db_path)
+    # Initialize database (applies base schema via _ensure_schema)
+    logger.info("=" * 60)
+    logger.info("Initializing database with base schema...")
+    logger.info("=" * 60)
+    db = Database(db_path)
+    logger.info(f"Database initialized: {db_path}")
+
+    # Now run migrations on startup (after base schema is applied)
+    from migrations.run_migrations import run_all_migrations
+
+    # Execute migrations
+    logger.info("=" * 60)
+    logger.info("Running database migrations on startup...")
+    logger.info("=" * 60)
+    run_all_migrations()
+
+    # Auto-seed personas if none exist
+    from utils.seed_personas_auto import ensure_personas_sealed
+    logger.info("=" * 60)
+    logger.info("Checking for persona seeding...")
+    logger.info("=" * 60)
+    ensure_personas_sealed(db_path)
+
+    logger.info("=" * 60)
+    logger.info("Gameapy API startup complete")
+    logger.info("=" * 60)
 
 # Now import routers (after database is fully initialized)
 from app.api.gameapy import router as gameapy_router
@@ -54,12 +71,6 @@ from app.api.chat import router as chat_router
 from app.api.cards import router as cards_router
 from app.api.guide import router as guide_router
 from app.api.session_analyzer import router as session_analyzer_router
-
-app = FastAPI(
-    title="Gameapy API",
-    description="Retro Therapeutic Storytelling App Backend",
-    version="0.1.0"
-)
 
 # Configure CORS for Flutter development
 app.add_middleware(
@@ -82,15 +93,21 @@ async def health_check():
     db_start_time = time.time()
     db_status = {"status": "down", "latency_ms": None}
     try:
-        with db._get_connection() as conn:
-            cursor = conn.execute("SELECT 1")
-            cursor.fetchone()
-        db_status = {"status": "up", "latency_ms": round((time.time() - db_start_time) * 1000, 2)}
+        # Check if db is initialized
+        if db is None:
+            db_status = {"status": "initializing", "latency_ms": None}
+        else:
+            with db._get_connection() as conn:
+                cursor = conn.execute("SELECT 1")
+                cursor.fetchone()
+            db_status = {"status": "up", "latency_ms": round((time.time() - db_start_time) * 1000, 2)}
     except Exception as e:
         db_status = {"status": "down", "latency_ms": None, "error": str(e)}
 
     overall_status = "healthy" if backend_status["status"] == "up" and db_status["status"] == "up" else "down"
-    if db_status["latency_ms"] and db_status["latency_ms"] > 500:
+    if db_status.get("status") == "initializing":
+        overall_status = "starting"
+    elif db_status["latency_ms"] and db_status["latency_ms"] > 500:
         overall_status = "degraded"
 
     return {
