@@ -23,6 +23,7 @@ from contextlib import contextmanager
 
 @pytest.fixture(scope="session", autouse=True)
 def test_database_setup():
+    print(f"[CONFTEST] test_database_setup() called")
     """
     Wire up test_database_url for all tests.
     
@@ -30,13 +31,20 @@ def test_database_setup():
     use the test database instead of the main database.
     """
     from app.core.config import settings
-    from app.db.database import Database
     import time
     
     original_url = settings.database_url
-    test_db_path = settings.test_database_url.replace("sqlite:///", "")
+    
+    # Update settings to point to test DB
+    settings.database_url = settings.test_database_url
+    settings.database_path = settings.database_url.replace("sqlite:///", "")
+    
+    # Debug: Log settings values
+    print(f"[CONFTEST] settings.database_url: {settings.database_url}")
+    print(f"[CONFTEST] settings.database_path: {settings.database_path}")
     
     # Remove existing test DB if present with retry logic
+    test_db_path = settings.database_path
     if os.path.exists(test_db_path):
         max_retries = 3
         for attempt in range(max_retries):
@@ -49,16 +57,13 @@ def test_database_setup():
                 else:
                     print(f"[Warning] Could not remove test DB before setup: {test_db_path}")
     
-    # Update settings to point to test DB
-    settings.database_url = settings.test_database_url
-    settings.database_path = test_db_path
-    
     # Reinitialize Database with test DB and run migration
     import app.db.database as db_module
     import importlib
     import sys
     
     original_db = db_module.db
+    from app.db.database import Database
     db_module.db = Database(test_db_path)
     
     # Force reload of modules that import db to ensure they get the new instance
@@ -721,14 +726,14 @@ def parse_sse_response(response_text: str) -> list:
 def sample_client():
     """Create a test client profile."""
     from app.db.database import db
-    return db.create_client_profile({
+    client_id, recovery_code = db.create_client_profile({
         'data': {
             'name': 'Test User',
             'personality': 'Test',
-            'traits': ['curious'],
             'tags': ['test']
         }
     })
+    return client_id
 
 
 @pytest.fixture
