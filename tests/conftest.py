@@ -51,6 +51,7 @@ def test_database_setup():
     
     # Update settings to point to test DB
     settings.database_url = settings.test_database_url
+    settings.database_path = test_db_path
     
     # Reinitialize Database with test DB and run migration
     import app.db.database as db_module
