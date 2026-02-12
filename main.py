@@ -44,6 +44,10 @@ async def startup_event():
     logger.info("=" * 60)
     db = Database(db_path)
     logger.info(f"Database initialized: {db_path}")
+    
+    # Fix: Ensure API modules use the initialized DB instance
+    from app.db import database as db_module
+    db_module.db = db
 
     # Now run migrations on startup (after base schema is applied)
     from migrations.run_migrations import run_all_migrations
