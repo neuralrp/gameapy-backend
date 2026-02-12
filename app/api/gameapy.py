@@ -292,10 +292,12 @@ async def get_all_cards(
         all_cards = []
 
         if self_card:
+            raw_payload = json.loads(self_card['card_json']) if isinstance(self_card['card_json'], str) else self_card['card_json']
+            normalized_payload = db.normalize_self_card_payload(raw_payload)
             all_cards.append({
                 'id': self_card['id'],
                 'card_type': 'self',
-                'payload': json.loads(self_card['card_json']) if isinstance(self_card['card_json'], str) else self_card['card_json'],
+                'payload': normalized_payload,
                 'auto_update_enabled': self_card['auto_update_enabled'],
                 'is_pinned': self_card['is_pinned'],
                 'created_at': self_card['created_at'],

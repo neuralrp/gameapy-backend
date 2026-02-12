@@ -87,10 +87,12 @@ class ContextAssembler:
     
     def _format_self_card(self, self_card: Dict) -> Dict:
         """Format self card for context."""
+        payload = json.loads(self_card['card_json'])
+        normalized_payload = db.normalize_self_card_payload(payload)
         return {
             'id': self_card['id'],
             'card_type': 'self',
-            'payload': json.loads(self_card['card_json']),
+            'payload': normalized_payload,
             'auto_update_enabled': self_card.get('auto_update_enabled', True),
             'is_pinned': self_card.get('is_pinned', False)
         }

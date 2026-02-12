@@ -96,9 +96,11 @@ async def save_card(request: CardSaveRequest) -> APIResponse:
     """
     try:
         if request.card_type == "self":
-            card_id = db.create_self_card(
+            normalized_payload = db.normalize_self_card_payload(request.card_data)
+            card_id = db.upsert_self_card(
                 client_id=request.client_id,
-                card_json=json.dumps(request.card_data)
+                card_json=normalized_payload,
+                changed_by='user'
             )
         elif request.card_type == "character":
             card_id = db.create_character_card(

@@ -10,6 +10,26 @@ from typing import List, Dict, Optional, Any, Tuple
 from datetime import datetime
 
 
+SELF_CARD_DEFAULTS = {
+    "name": "",
+    "personality": "",
+    "background": "",
+    "description": "",
+    "summary": "",
+    "traits": [],
+    "interests": [],
+    "values": [],
+    "strengths": [],
+    "challenges": [],
+    "goals": [],
+    "triggers": [],
+    "coping_strategies": [],
+    "patterns": [],
+    "current_themes": [],
+    "risk_flags": {},
+}
+
+
 class Database:
     """Thread-safe database operations with connection pooling."""
 
@@ -36,6 +56,34 @@ class Database:
 
         # Apply base schema (idempotent)
         self._ensure_schema()
+
+    def normalize_self_card_payload(self, payload: Any) -> Dict[str, Any]:
+        if payload is None:
+            normalized = {}
+        elif isinstance(payload, str):
+            try:
+                normalized = json.loads(payload)
+            except json.JSONDecodeError:
+                normalized = {}
+        elif isinstance(payload, dict):
+            if isinstance(payload.get("data"), dict):
+                normalized = dict(payload["data"])
+                for key, value in payload.items():
+                    if key in ("spec", "spec_version", "data", "_metadata"):
+                        continue
+                    normalized[key] = value
+                if "_metadata" in payload:
+                    normalized["_metadata"] = payload["_metadata"]
+            else:
+                normalized = dict(payload)
+        else:
+            normalized = {}
+
+        for key, default_value in SELF_CARD_DEFAULTS.items():
+            if key not in normalized or normalized[key] is None:
+                normalized[key] = default_value
+
+        return normalized
 
     @contextmanager
     def _get_connection(self):
@@ -784,16 +832,19 @@ class Database:
     # Phase 1: Self Card Methods
     # ============================================================
 
-    def create_self_card(self, client_id: int, card_json: str, auto_update_enabled: bool = True) -> int:
+    def create_self_card(self, client_id: int, card_json: Any, auto_update_enabled: bool = True) -> int:
         """Create a self card for a client."""
+        normalized_payload = self.normalize_self_card_payload(card_json)
+        normalized_json = json.dumps(normalized_payload)
+
         with self._get_connection() as conn:
             cursor = conn.execute("""
                 INSERT INTO self_cards (client_id, card_json, auto_update_enabled, last_updated)
                 VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            """, (client_id, card_json, auto_update_enabled))
+            """, (client_id, normalized_json, auto_update_enabled))
             card_id = cursor.lastrowid
             if card_id is not None:
-                self._log_change(conn, 'self_card', card_id, 'created', None, {'card_json': card_json})
+                self._log_change(conn, 'self_card', card_id, 'created', None, {'card_json': normalized_payload})
             return card_id or 0
 
     def get_self_card(self, client_id: int) -> Optional[Dict]:
@@ -814,15 +865,18 @@ class Database:
             row = cursor.fetchone()
             return dict(row) if row else None
 
-    def update_self_card(self, client_id: int, card_json: str, changed_by: str = 'system') -> bool:
+    def update_self_card(self, client_id: int, card_json: Any, changed_by: str = 'system') -> bool:
         """Update self card for a client."""
+        normalized_payload = self.normalize_self_card_payload(card_json)
+        normalized_json = json.dumps(normalized_payload)
+
         with self._get_connection() as conn:
             old_card = self.get_self_card(client_id)
             cursor = conn.execute("""
                 UPDATE self_cards
                 SET card_json = ?, last_updated = CURRENT_TIMESTAMP
                 WHERE client_id = ?
-            """, (card_json, client_id))
+            """, (normalized_json, client_id))
             if cursor.rowcount > 0:
                 self._log_change(
                     conn,
@@ -830,10 +884,18 @@ class Database:
                     client_id,
                     'updated',
                     old_card,
-                    json.loads(card_json),
+                    normalized_payload,
                     changed_by
                 )
             return cursor.rowcount > 0
+
+    def upsert_self_card(self, client_id: int, card_json: Any, changed_by: str = 'system') -> int:
+        existing = self.get_self_card(client_id)
+        if existing:
+            self.update_self_card(client_id, card_json, changed_by=changed_by)
+            return existing['id']
+
+        return self.create_self_card(client_id, card_json)
 
     # ============================================================
     # PHASE 1: World Event Methods
@@ -917,7 +979,7 @@ class Database:
         """Get entity mentions with optional filtering."""
         with self._get_connection() as conn:
             query = "SELECT * FROM entity_mentions WHERE client_id = ?"
-            params = [client_id]
+            params: List[object] = [client_id]
 
             if entity_ref:
                 query += " AND entity_ref = ?"

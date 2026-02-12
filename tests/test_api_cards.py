@@ -113,6 +113,39 @@ class TestCardsGenerateSave:
         assert data['data']['card_id'] > 0
 
     @pytest.mark.integration
+    def test_save_self_card_upsert_updates_existing(self, test_client, sample_client):
+        """Saving self card twice updates the existing record."""
+        initial_id = db.create_self_card(
+            client_id=sample_client,
+            card_json=json.dumps({"name": "Test User", "personality": "Old"})
+        )
+
+        response = test_client.post(
+            "/api/v1/cards/save",
+            json={
+                "client_id": sample_client,
+                "card_type": "self",
+                "card_data": {
+                    "spec": "gameapy_self_card_v1",
+                    "data": {
+                        "name": "Test User",
+                        "personality": "New"
+                    }
+                }
+            }
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data['success'] is True
+        assert data['data']['card_id'] == initial_id
+
+        self_card = db.get_self_card(sample_client)
+        assert self_card is not None
+        payload = json.loads(self_card['card_json'])
+        assert payload.get('personality') == "New"
+
+    @pytest.mark.integration
     def test_generate_from_text_llm_error(self, test_client, mock_llm_error):
         """LLM error returns graceful failure message."""
         response = test_client.post(

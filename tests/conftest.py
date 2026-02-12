@@ -308,11 +308,9 @@ def mock_llm_success(monkeypatch):
     
     import app.services.simple_llm_fixed as llm_module
     import app.api.chat as chat_module
-    import app.api.guide as guide_module
     import app.api.session_analyzer as session_analyzer_module
     import app.services.card_generator as card_gen_module
     import app.services.card_updater as card_updater_module
-    import app.services.guide_system as guide_system_module
     
     mock_instance = MockSuccessClient()
     
@@ -321,13 +319,11 @@ def mock_llm_success(monkeypatch):
     
     # Monkeypatch also in the API modules that import it directly
     monkeypatch.setattr(chat_module, 'simple_llm_client', mock_instance, raising=False)
-    monkeypatch.setattr(guide_module, 'simple_llm_client', mock_instance, raising=False)
     monkeypatch.setattr(session_analyzer_module, 'simple_llm_client', mock_instance, raising=False)
     
     # Monkeypatch in services that import at module load time
     monkeypatch.setattr(card_gen_module, 'simple_llm_client', mock_instance, raising=False)
     monkeypatch.setattr(card_updater_module, 'simple_llm_client', mock_instance, raising=False)
-    monkeypatch.setattr(guide_system_module, 'simple_llm_client', mock_instance, raising=False)
     
     yield
     
@@ -372,11 +368,9 @@ def mock_llm_fallback(monkeypatch):
     
     import app.services.simple_llm_fixed as llm_module
     import app.api.chat as chat_module
-    import app.api.guide as guide_module
     import app.api.session_analyzer as session_analyzer_module
     import app.services.card_generator as card_gen_module
     import app.services.card_updater as card_updater_module
-    import app.services.guide_system as guide_system_module
     
     mock_instance = MockFallbackClient()
     
@@ -385,13 +379,11 @@ def mock_llm_fallback(monkeypatch):
     
     # Monkeypatch also in API modules that import it directly
     monkeypatch.setattr(chat_module, 'simple_llm_client', mock_instance, raising=False)
-    monkeypatch.setattr(guide_module, 'simple_llm_client', mock_instance, raising=False)
     monkeypatch.setattr(session_analyzer_module, 'simple_llm_client', mock_instance, raising=False)
     
     # Monkeypatch in services that import at module load time
     monkeypatch.setattr(card_gen_module, 'simple_llm_client', mock_instance, raising=False)
     monkeypatch.setattr(card_updater_module, 'simple_llm_client', mock_instance, raising=False)
-    monkeypatch.setattr(guide_system_module, 'simple_llm_client', mock_instance, raising=False)
     
     yield
     
@@ -444,11 +436,9 @@ def mock_llm_error(monkeypatch):
     
     import app.services.simple_llm_fixed as llm_module
     import app.api.chat as chat_module
-    import app.api.guide as guide_module
     import app.api.session_analyzer as session_analyzer_module
     import app.services.card_generator as card_gen_module
     import app.services.card_updater as card_updater_module
-    import app.services.guide_system as guide_system_module
     
     mock_instance = MockErrorClient()
     
@@ -457,13 +447,11 @@ def mock_llm_error(monkeypatch):
     
     # Monkeypatch also in the API modules that import it directly
     monkeypatch.setattr(chat_module, 'simple_llm_client', mock_instance, raising=False)
-    monkeypatch.setattr(guide_module, 'simple_llm_client', mock_instance, raising=False)
     monkeypatch.setattr(session_analyzer_module, 'simple_llm_client', mock_instance, raising=False)
     
     # Monkeypatch in services that import at module load time
     monkeypatch.setattr(card_gen_module, 'simple_llm_client', mock_instance, raising=False)
     monkeypatch.setattr(card_updater_module, 'simple_llm_client', mock_instance, raising=False)
-    monkeypatch.setattr(guide_system_module, 'simple_llm_client', mock_instance, raising=False)
     
     yield
     
@@ -520,11 +508,9 @@ def mock_llm_no_card(monkeypatch):
     
     import app.services.simple_llm_fixed as llm_module
     import app.api.chat as chat_module
-    import app.api.guide as guide_module
     import app.api.session_analyzer as session_analyzer_module
     import app.services.card_generator as card_gen_module
     import app.services.card_updater as card_updater_module
-    import app.services.guide_system as guide_system_module
     
     mock_instance = MockNoCardClient()
     
@@ -533,13 +519,11 @@ def mock_llm_no_card(monkeypatch):
     
     # Monkeypatch also in the API modules that import it directly
     monkeypatch.setattr(chat_module, 'simple_llm_client', mock_instance, raising=False)
-    monkeypatch.setattr(guide_module, 'simple_llm_client', mock_instance, raising=False)
     monkeypatch.setattr(session_analyzer_module, 'simple_llm_client', mock_instance, raising=False)
     
     # Monkeypatch in services that import at module load time
     monkeypatch.setattr(card_gen_module, 'simple_llm_client', mock_instance, raising=False)
     monkeypatch.setattr(card_updater_module, 'simple_llm_client', mock_instance, raising=False)
-    monkeypatch.setattr(guide_system_module, 'simple_llm_client', mock_instance, raising=False)
     
     yield
     
@@ -666,11 +650,9 @@ def mock_llm_streaming_success(monkeypatch):
     
     import app.services.simple_llm_fixed as llm_module
     import app.api.chat as chat_module
-    import app.api.guide as guide_module
     import app.api.session_analyzer as session_analyzer_module
     import app.services.card_generator as card_gen_module
     import app.services.card_updater as card_updater_module
-    import app.services.guide_system as guide_system_module
     
     mock_instance = MockStreamingClient()
     
@@ -679,13 +661,11 @@ def mock_llm_streaming_success(monkeypatch):
     
     # Monkeypatch also in API modules that import it directly
     monkeypatch.setattr(chat_module, 'simple_llm_client', mock_instance, raising=False)
-    monkeypatch.setattr(guide_module, 'simple_llm_client', mock_instance, raising=False)
     monkeypatch.setattr(session_analyzer_module, 'simple_llm_client', mock_instance, raising=False)
     
     # Monkeypatch in services that import at module load time
     monkeypatch.setattr(card_gen_module, 'simple_llm_client', mock_instance, raising=False)
     monkeypatch.setattr(card_updater_module, 'simple_llm_client', mock_instance, raising=False)
-    monkeypatch.setattr(guide_system_module, 'simple_llm_client', mock_instance, raising=False)
     
     yield
     
@@ -746,24 +726,6 @@ def sample_counselor():
             "specialization": "Test",
             "therapeutic_style": "Supportive",
             "credentials": "Test credentials"
-        }
-    }
-    return db.create_counselor_profile(counselor_data)
-
-
-@pytest.fixture
-def sample_guide_counselor():
-    """Create a guide counselor profile for guide system tests."""
-    from app.db.database import db
-    counselor_data = {
-        'data': {
-            "name": "Guide",
-            "specialization": "Onboarding & Getting to Know You",
-            "therapeutic_style": (
-                "Warm, curious, and conversational. "
-                "Helps users share what matters at their own pace."
-            ),
-            "credentials": "AI Guide"
         }
     }
     return db.create_counselor_profile(counselor_data)

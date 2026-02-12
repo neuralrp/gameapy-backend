@@ -324,31 +324,6 @@ class CardSaveResponse(BaseModel):
     card_id: int
 
 
-# Phase 2: Guide System Models
-class OnboardingStartRequest(BaseModel):
-    client_id: int
-
-
-class OnboardingStartResponse(BaseModel):
-    phase: str
-    guide_message: str
-    session_id: int
-    client_id: int
-
-
-class OnboardingInputRequest(BaseModel):
-    session_id: int
-    phase: str
-    user_input: str
-
-
-class OnboardingInputResponse(BaseModel):
-    phase: str
-    guide_message: str
-    conversation_complete: bool
-    cards_generated: List[Dict[str, Any]]
-
-
 # ============================================================
 # Phase 3: Unified Card Management Models
 # ============================================================

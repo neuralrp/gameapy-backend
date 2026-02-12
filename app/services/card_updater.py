@@ -3,6 +3,7 @@ import time
 from typing import Optional, Dict, Any, List
 from ..core.config import settings
 from ..services.simple_llm_fixed import simple_llm_client
+from ..services.card_generator import card_generator
 from ..db.database import db
 from ..utils.card_metadata import update_card_fields
 
@@ -46,7 +47,22 @@ class CardUpdater:
         updates_applied = []
 
         try:
-            prompt = self._build_update_prompt(client_id, session_id, messages)
+            formatted_transcript = self._format_transcript(messages)
+
+            created_self_card_id = await self._ensure_self_card(
+                client_id,
+                session_id,
+                formatted_transcript
+            )
+            if created_self_card_id:
+                cards_updated += 1
+                updates_applied.append({
+                    "card_id": created_self_card_id,
+                    "card_type": "self",
+                    "fields_updated": ["created"]
+                })
+
+            prompt = self._build_update_prompt(client_id, session_id, formatted_transcript)
 
             response = await simple_llm_client.chat_completion(
                 messages=[{"role": "system", "content": prompt}],
@@ -79,6 +95,7 @@ class CardUpdater:
                 }
 
             updates_list = parsed_updates.get('updates', [])
+            new_cards = parsed_updates.get('new_cards', [])
 
             for update_proposal in updates_list:
                 card_id = update_proposal.get('card_id')
@@ -101,6 +118,17 @@ class CardUpdater:
                 except Exception as e:
                     cards_skipped += 1
                     continue
+
+            if new_cards:
+                created_cards = self._create_character_cards_from_updates(client_id, new_cards)
+                if created_cards:
+                    cards_updated += len(created_cards)
+                    for card_id in created_cards:
+                        updates_applied.append({
+                            "card_id": card_id,
+                            "card_type": "character",
+                            "fields_updated": ["created"]
+                        })
 
             await db._log_performance_metric(
                 operation="card_update",
@@ -141,14 +169,9 @@ class CardUpdater:
         self,
         client_id: int,
         session_id: int,
-        messages: List[Dict[str, Any]]
+        formatted_transcript: str
     ) -> str:
         """Build LLM prompt to extract update proposals."""
-        formatted_transcript = "\n".join([
-            f"{msg['role']}: {msg['content']}"
-            for msg in messages
-        ])
-
         existing_cards_summary = self._get_existing_cards_summary(client_id)
 
         return f"""You are a card updater for Gameapy, analyzing a counseling session transcript.
@@ -161,7 +184,7 @@ EXISTING CARDS:
 ---
 {existing_cards_summary}
 
-Output ONLY valid JSON proposing updates:
+Output ONLY valid JSON proposing updates and new cards:
 {{
   "confidence": 0.0-1.0,  // Batch-level confidence
   "updates": [
@@ -178,6 +201,17 @@ Output ONLY valid JSON proposing updates:
         }}
       ]
     }}
+  ],
+  "new_cards": [
+    {{
+      "card_type": "character",
+      "name": "Name of person",
+      "relationship_type": "family|friend|partner|coworker|other",
+      "relationship_label": "Optional custom label",
+      "personality": "Optional short description",
+      "traits": ["optional", "list"],
+      "patterns": []
+    }}
   ]
 }}
 
@@ -187,9 +221,87 @@ Rules:
 - For patterns: use "append" action
 - For arrays: use "append" action
 - For simple fields: use "replace" action
-- If batch confidence < 0.5, return empty updates array
+- If batch confidence < 0.5, return empty updates array and empty new_cards
+- Only include new_cards if the person is new (no existing character card)
 
 Do not include any text outside of JSON."""
+
+    def _format_transcript(self, messages: List[Dict[str, Any]]) -> str:
+        return "\n".join([
+            f"{msg['role']}: {msg['content']}"
+            for msg in messages
+        ])
+
+    async def _ensure_self_card(
+        self,
+        client_id: int,
+        session_id: int,
+        formatted_transcript: str
+    ) -> Optional[int]:
+        existing_self_card = db.get_self_card(client_id)
+        if existing_self_card:
+            return None
+
+        try:
+            result = await card_generator.generate_card(
+                card_type="self",
+                plain_text=formatted_transcript,
+                context=f"Auto-create self card from session {session_id}"
+            )
+            generated = result.get("generated_card")
+            if not generated:
+                return None
+
+            normalized = db.normalize_self_card_payload(generated)
+            return db.upsert_self_card(client_id, normalized, changed_by="system")
+        except Exception:
+            return None
+
+    def _create_character_cards_from_updates(
+        self,
+        client_id: int,
+        new_cards: List[Dict[str, Any]]
+    ) -> List[int]:
+        created_ids: List[int] = []
+        existing_cards = db.get_character_cards(client_id)
+        existing_names = {
+            (card.get("card_name") or "").strip().lower()
+            for card in existing_cards
+        }
+
+        for card in new_cards:
+            if card.get("card_type") != "character":
+                continue
+
+            name = (card.get("name") or "").strip()
+            relationship_type = (card.get("relationship_type") or "").strip()
+            if not name or not relationship_type:
+                continue
+
+            if name.lower() in existing_names:
+                continue
+
+            relationship_label = (card.get("relationship_label") or "").strip() or None
+            card_payload = {
+                "personality": card.get("personality", "")
+            }
+            if isinstance(card.get("traits"), list):
+                card_payload["traits"] = card.get("traits")
+            if isinstance(card.get("patterns"), list):
+                card_payload["patterns"] = card.get("patterns")
+
+            card_id = db.create_character_card(
+                client_id=client_id,
+                card_name=name,
+                relationship_type=relationship_type,
+                relationship_label=relationship_label,
+                card_data=card_payload
+            )
+            if card_id:
+                existing_names.add(name.lower())
+                created_ids.append(card_id)
+
+        return created_ids
 
     def _get_existing_cards_summary(self, client_id: int) -> str:
         """Get summary of existing cards for context."""
@@ -198,6 +310,7 @@ Do not include any text outside of JSON."""
         self_card = db.get_self_card(client_id)
         if self_card:
             card_json = json.loads(self_card['card_json']) if isinstance(self_card['card_json'], str) else self_card['card_json']
+            card_json = db.normalize_self_card_payload(card_json)
             summary_lines.append(f"Self Card (id={self_card['id']}):")
             summary_lines.append(f"  Personality: {card_json.get('personality', 'N/A')}")
             summary_lines.append(f"  Traits: {card_json.get('traits', [])}")
@@ -232,7 +345,25 @@ Do not include any text outside of JSON."""
             end = json_text.find("```", start)
             json_text = json_text[start:end].strip()
 
-        return json.loads(json_text)
+        parsed = json.loads(json_text)
+        if not isinstance(parsed, dict):
+            return {"confidence": 0.0, "updates": [], "new_cards": []}
+
+        parsed.setdefault("confidence", 0.0)
+        parsed.setdefault("updates", [])
+        parsed.setdefault("new_cards", [])
+        return parsed
+
+    def _ensure_field(self, card_json: Dict[str, Any], field: str, action: str, value: Any) -> None:
+        if field in card_json and card_json[field] is not None:
+            return
+
+        if action == "append" or isinstance(value, list):
+            card_json[field] = []
+        elif isinstance(value, dict):
+            card_json[field] = {}
+        else:
+            card_json[field] = ""
 
     def _should_accept_batch(self, batch_confidence: float) -> bool:
         """Check if batch-level confidence meets threshold."""
@@ -290,6 +421,7 @@ Do not include any text outside of JSON."""
             return []
 
         card_json = json.loads(self_card['card_json']) if isinstance(self_card['card_json'], str) else self_card['card_json']
+        card_json = db.normalize_self_card_payload(card_json)
         applied_fields = []
 
         for update in updates:
@@ -301,21 +433,21 @@ Do not include any text outside of JSON."""
             if not self._should_accept_field(confidence):
                 continue
 
-            if field in card_json:
-                old_value = card_json[field]
+            self._ensure_field(card_json, field, action, value)
+            old_value = card_json.get(field)
 
-                if action == 'replace':
-                    card_json[field] = value
-                    applied_fields.append(field)
-                elif action == 'merge' and isinstance(old_value, str) and isinstance(value, str):
-                    card_json[field] = self._merge_personality(old_value, value)
-                    applied_fields.append(field)
-                elif action == 'append' and isinstance(old_value, list) and isinstance(value, list):
-                    if field == 'patterns':
-                        card_json[field] = self._append_patterns(old_value, value)
-                    else:
-                        card_json[field] = old_value + value
-                    applied_fields.append(field)
+            if action == 'replace':
+                card_json[field] = value
+                applied_fields.append(field)
+            elif action == 'merge' and isinstance(old_value, str) and isinstance(value, str):
+                card_json[field] = self._merge_personality(old_value, value)
+                applied_fields.append(field)
+            elif action == 'append' and isinstance(old_value, list) and isinstance(value, list):
+                if field == 'patterns':
+                    card_json[field] = self._append_patterns(old_value, value)
+                else:
+                    card_json[field] = old_value + value
+                applied_fields.append(field)
 
         if applied_fields:
             # Update metadata for changed fields
@@ -360,21 +492,21 @@ Do not include any text outside of JSON."""
             if not self._should_accept_field(confidence):
                 continue
 
-            if field in card_data:
-                old_value = card_data[field]
+            self._ensure_field(card_data, field, action, value)
+            old_value = card_data.get(field)
 
-                if action == 'replace':
-                    card_data[field] = value
-                    applied_fields.append(field)
-                elif action == 'merge' and isinstance(old_value, str) and isinstance(value, str):
-                    card_data[field] = self._merge_personality(old_value, value)
-                    applied_fields.append(field)
-                elif action == 'append' and isinstance(old_value, list) and isinstance(value, list):
-                    if field == 'patterns':
-                        card_data[field] = self._append_patterns(old_value, value)
-                    else:
-                        card_data[field] = old_value + value
-                    applied_fields.append(field)
+            if action == 'replace':
+                card_data[field] = value
+                applied_fields.append(field)
+            elif action == 'merge' and isinstance(old_value, str) and isinstance(value, str):
+                card_data[field] = self._merge_personality(old_value, value)
+                applied_fields.append(field)
+            elif action == 'append' and isinstance(old_value, list) and isinstance(value, list):
+                if field == 'patterns':
+                    card_data[field] = self._append_patterns(old_value, value)
+                else:
+                    card_data[field] = old_value + value
+                applied_fields.append(field)
 
         if applied_fields:
             # Update metadata for changed fields
