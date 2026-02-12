@@ -24,39 +24,9 @@ logger = logging.getLogger(__name__)
 MIGRATIONS = [
     {
         "id": "001",
-        "name": "phase1_schema",
-        "module": "migrations.001_phase1_schema",
+        "name": "initial_schema",
+        "module": "migrations.001_initial_schema",
         "function": "run_migration"
-    },
-    {
-        "id": "004",
-        "name": "pivot_cleanup",
-        "module": "migrations.004_pivot_cleanup",
-        "function": "migrate"
-    },
-    {
-        "id": "005",
-        "name": "add_hidden_flag",
-        "module": "migrations.005_add_hidden_flag",
-        "function": "migrate"
-    },
-    {
-        "id": "006",
-        "name": "add_relationship_label",
-        "module": "migrations.006_add_relationship_label",
-        "function": "migrate"
-    },
-    {
-        "id": "007",
-        "name": "add_recovery_code",
-        "module": "migrations.007_add_recovery_code",
-        "function": "migrate"
-    },
-    {
-        "id": "008",
-        "name": "add_custom_advisors",
-        "module": "migrations.008_add_custom_advisors",
-        "function": "upgrade"
     }
 ]
 

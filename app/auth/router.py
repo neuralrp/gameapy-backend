@@ -60,6 +60,20 @@ async def register(request: RegisterRequest):
         profile_data=profile_data
     )
     
+    initial_self_card = {
+        "spec": "gameapy_self_card_v1",
+        "spec_version": "1.0",
+        "data": {
+            "name": request.name,
+            "personality": "New user - getting to know them",
+            "traits": [],
+            "goals": [],
+            "presenting_issues": [],
+            "life_events": []
+        }
+    }
+    db.create_self_card(user_id, initial_self_card)
+    
     access_token = create_access_token(data={"sub": str(user_id)})
     
     return APIResponse(

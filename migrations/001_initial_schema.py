@@ -1,9 +1,13 @@
 """
-Phase 1 Migration: Database Schema Creation
-Creates all base tables from schema.sql if they don't exist.
+Initial Schema Migration: Complete Database Setup
+Creates all tables from schema.sql if they don't exist.
 
 Migration ID: 001
-Migration Name: phase1_schema
+Migration Name: initial_schema
+
+This is a consolidated migration containing all schema changes through v3.7.
+It includes: base tables, is_pinned columns, is_hidden flag, relationship_label,
+recovery codes, and custom advisors support.
 
 IMPORTANT: This migration checks ACTUAL table existence, not just migration records.
 This makes it idempotent and safe to re-run if tables are missing.
@@ -107,9 +111,9 @@ def record_migration(database_url: str, migration_id: str, migration_name: str):
 
 
 def run_migration(db_path: str):
-    """Apply Phase 1 schema - creates all tables if missing."""
+    """Apply initial schema - creates all tables if missing."""
     MIGRATION_ID = "001"
-    MIGRATION_NAME = "phase1_schema"
+    MIGRATION_NAME = "initial_schema"
     
     logger.info(f"[MIGRATION 001] Starting: {MIGRATION_NAME}")
     logger.info(f"[MIGRATION 001] Database URL: {db_path[:30]}...")
