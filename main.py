@@ -18,56 +18,34 @@ logger = logging.getLogger(__name__)
 # Add backend to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-# Import Database first to apply base schema
-from app.db.database import Database
+# Import db - this triggers module-level DB initialization
+from app.db.database import db
 
-# Determine database path
+# Run migrations (after base schema is applied by Database.__init__)
+from migrations.run_migrations import run_all_migrations
+logger.info("=" * 60)
+logger.info("Running database migrations...")
+logger.info("=" * 60)
+run_all_migrations()
+
+# Auto-seed personas if none exist
+from utils.seed_personas_auto import ensure_personas_sealed
 from app.core.config import settings
 db_path = settings.database_path or "gameapy.db"
+logger.info("=" * 60)
+logger.info("Checking for persona seeding...")
+logger.info("=" * 60)
+ensure_personas_sealed(db_path)
 
-# Initialize db as None - will be set during startup event
-db = None
+logger.info("=" * 60)
+logger.info("Gameapy API startup complete")
+logger.info("=" * 60)
 
 app = FastAPI(
     title="Gameapy API",
     description="Retro Therapeutic Storytelling App Backend",
     version="0.1.0"
 )
-
-@app.on_event("startup")
-async def startup_event():
-    global db
-
-    # Initialize database (applies base schema via _ensure_schema)
-    logger.info("=" * 60)
-    logger.info("Initializing database with base schema...")
-    logger.info("=" * 60)
-    db = Database(db_path)
-    logger.info(f"Database initialized: {db_path}")
-    
-    # Fix: Ensure API modules use the initialized DB instance
-    from app.db import database as db_module
-    db_module.db = db
-
-    # Now run migrations on startup (after base schema is applied)
-    from migrations.run_migrations import run_all_migrations
-
-    # Execute migrations
-    logger.info("=" * 60)
-    logger.info("Running database migrations on startup...")
-    logger.info("=" * 60)
-    run_all_migrations()
-
-    # Auto-seed personas if none exist
-    from utils.seed_personas_auto import ensure_personas_sealed
-    logger.info("=" * 60)
-    logger.info("Checking for persona seeding...")
-    logger.info("=" * 60)
-    ensure_personas_sealed(db_path)
-
-    logger.info("=" * 60)
-    logger.info("Gameapy API startup complete")
-    logger.info("=" * 60)
 
 # Now import routers (after database is fully initialized)
 from app.api.gameapy import router as gameapy_router

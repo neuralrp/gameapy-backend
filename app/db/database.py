@@ -1239,6 +1239,6 @@ class Database:
             }
 
 
-# Global database instance - will be initialized after migrations run in main.py
-# Set to None initially; will be created when database.py is imported AFTER migrations
-db = None
+# Global database instance - initialized at module load time
+# Database() constructor auto-detects path from settings or uses default "gameapy.db"
+db = Database()

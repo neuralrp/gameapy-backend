@@ -66,7 +66,14 @@ def test_database_setup():
             if mod_name.startswith('app.') or mod_name.startswith('tests.'):
                 importlib.reload(sys.modules[mod_name])
     
-    # Run pivot migration on test DB (after schema is created)
+    # Re-set db after reload (reload re-executes db = Database() with default path)
+    db_module.db = Database(test_db_path)
+    
+    # Run all migrations on test DB (after schema is created)
+    from migrations.run_migrations import run_all_migrations
+    run_all_migrations()
+    
+    # Run pivot migration on test DB (ensure is_pinned columns exist)
     _run_test_db_migration(db_module.db)
     
     yield
