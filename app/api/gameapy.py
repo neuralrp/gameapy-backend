@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Security
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import List, Optional
 from app.models.schemas import (
     ClientProfile, APIResponse,
@@ -14,6 +15,7 @@ from datetime import datetime
 import json
 
 router = APIRouter()
+optional_security = HTTPBearer(auto_error=False)
 
 
 # Health Check (public)
@@ -58,13 +60,22 @@ async def create_counselor(counselor_data: CounselorProfileCreate):
 
 
 @router.get("/counselors", response_model=List[CounselorProfile])
-async def get_all_counselors(current_user: dict = Depends(get_current_user)):
+async def get_all_counselors(
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(optional_security)
+):
     """
     Get all active counselors (system personas + user's custom advisors).
-    Requires authentication.
+    If authenticated, includes user's custom advisors. If not, returns system counselors only.
     """
     try:
-        client_id = current_user["id"]
+        client_id = 0
+        if credentials:
+            try:
+                user = await get_current_user(credentials)
+                client_id = user["id"]
+            except HTTPException:
+                pass
+        
         counselors = db.get_all_counselors_including_custom(client_id)
         return counselors
     except Exception as e:
