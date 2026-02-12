@@ -8,7 +8,7 @@ that allows specific matching instead of generic relationship categories.
 
 import os
 import sys
-import sqlite3
+import psycopg2
 import logging
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -16,19 +16,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 logger = logging.getLogger(__name__)
 
 
-def migrate(db_path: str):
-    """Add relationship_label column to character_cards table with explicit db_path."""
+def migrate(database_url: str):
+    """Add relationship_label column to character_cards table with explicit database_url."""
     logger.info("[MIGRATION 006] Adding relationship_label column to character_cards")
 
-    conn = sqlite3.connect(db_path)
+    conn = psycopg2.connect(database_url)
     cursor = conn.cursor()
 
     try:
         # Check if column already exists
-        cursor.execute("PRAGMA table_info(character_cards)")
-        columns = [column[1] for column in cursor.fetchall()]
-
-        if 'relationship_label' in columns:
+        cursor.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'character_cards'
+            AND column_name = 'relationship_label'
+        """)
+        if cursor.fetchone():
             logger.info("[OK] Column relationship_label already exists")
             return
 
@@ -36,7 +39,7 @@ def migrate(db_path: str):
         logger.info("[INFO] Adding relationship_label column...")
         cursor.execute("""
             ALTER TABLE character_cards
-            ADD COLUMN relationship_label TEXT
+            ADD COLUMN IF NOT EXISTS relationship_label TEXT
         """)
 
         conn.commit()
@@ -48,10 +51,11 @@ def migrate(db_path: str):
         logger.error(f"[ERROR] Migration failed: {e}")
         raise
     finally:
+        cursor.close()
         conn.close()
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     from app.core.config import settings
-    migrate(settings.database_path or "gameapy.db")
+    migrate(settings.database_url)

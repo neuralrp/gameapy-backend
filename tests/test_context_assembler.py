@@ -9,13 +9,14 @@ class TestContextAssembler:
     """Test context assembly and loading priorities."""
     
     @pytest.mark.integration
-    def test_always_loads_self_card(self, sample_client, sample_self_card):
+    def test_always_loads_self_card(self, sample_client, sample_session, sample_self_card):
         """Test self card is always loaded."""
         client_id = sample_client
+        session_id = sample_session
         
         context = context_assembler.assemble_context(
             client_id=client_id,
-            session_id=1,
+            session_id=session_id,
             user_message="test"
         )
         
@@ -24,7 +25,7 @@ class TestContextAssembler:
         assert context['total_cards_loaded'] >= 1
     
     @pytest.mark.integration
-    def test_pinned_cards_loaded(self, sample_client, sample_character_card):
+    def test_pinned_cards_loaded(self, sample_client, sample_session, sample_character_card):
         """Test pinned cards are always loaded."""
         client_id = sample_client
         
@@ -34,7 +35,7 @@ class TestContextAssembler:
         
         context = context_assembler.assemble_context(
             client_id=client_id,
-            session_id=1,
+            session_id=sample_session,
             user_message="test"
         )
         
@@ -43,7 +44,7 @@ class TestContextAssembler:
         assert context['total_cards_loaded'] >= 1
     
     @pytest.mark.integration
-    def test_pinned_cards_not_in_recent(self, sample_client, sample_self_card, sample_character_card):
+    def test_pinned_cards_not_in_recent(self, sample_client, sample_session, sample_self_card, sample_character_card):
         """Test pinned cards excluded from recent list."""
         client_id = sample_client
         
@@ -53,7 +54,7 @@ class TestContextAssembler:
         
         context = context_assembler.assemble_context(
             client_id=client_id,
-            session_id=1,
+            session_id=sample_session,
             user_message="test"
         )
         
@@ -64,7 +65,7 @@ class TestContextAssembler:
         assert len(pinned_ids.intersection(recent_ids)) == 0
     
     @pytest.mark.integration
-    def test_current_session_mentions_loaded(self, sample_client, sample_self_card):
+    def test_current_session_mentions_loaded(self, sample_client, sample_session, sample_self_card):
         """Test cards mentioned in current session are loaded."""
         client_id = sample_client
         
@@ -79,7 +80,7 @@ class TestContextAssembler:
         # Log mention in current session
         db.add_entity_mention(
             client_id=client_id,
-            session_id=1,
+            session_id=sample_session,
             entity_type="character_card",
             entity_ref=str(dad_id),
             mention_context="Dad was here"
@@ -87,7 +88,7 @@ class TestContextAssembler:
         
         context = context_assembler.assemble_context(
             client_id=client_id,
-            session_id=1,
+            session_id=sample_session,
             user_message="test"
         )
         
@@ -96,7 +97,7 @@ class TestContextAssembler:
         assert context['total_cards_loaded'] >= 1
     
     @pytest.mark.integration
-    def test_recent_cards_limit_respected(self, sample_client, sample_self_card, monkeypatch):
+    def test_recent_cards_limit_respected(self, sample_client, sample_session, sample_counselor, sample_self_card, monkeypatch):
         """Test that recent_card_session_limit is respected."""
         client_id = sample_client
         
@@ -112,27 +113,29 @@ class TestContextAssembler:
                 relationship_type="friend",
                 card_data={"name": f"Person{i}", "relationship_type": "friend"}
             )
+            # Create actual session for each mention
+            session_id = db.create_session(client_id=client_id, counselor_id=sample_counselor)
             # Mention in different session
             db.add_entity_mention(
                 client_id=client_id,
-                session_id=i,  # Sessions 0, 1, 2
+                session_id=session_id,
                 entity_type="character_card",
                 entity_ref=str(card_id),
                 mention_context=f"Person{i}"
             )
         
-        # Assemble context from session 3 (new session)
+        # Assemble context from a new session
         context = context_assembler.assemble_context(
             client_id=client_id,
-            session_id=3,
+            session_id=sample_session,
             user_message="test"
         )
         
-        # Should only load cards from last 2 sessions (sessions 1, 2)
+        # Should only load cards from last 2 sessions
         assert len(context['recent_cards']) <= 2
     
     @pytest.mark.integration
-    def test_total_cards_counted_correctly(self, sample_client, sample_self_card, sample_character_card):
+    def test_total_cards_counted_correctly(self, sample_client, sample_session, sample_self_card, sample_character_card):
         """Test total cards loaded is accurate."""
         client_id = sample_client
         
@@ -151,7 +154,7 @@ class TestContextAssembler:
         # Log mention in current session
         db.add_entity_mention(
             client_id=client_id,
-            session_id=1,
+            session_id=sample_session,
             entity_type="character_card",
             entity_ref=str(friend_id),
             mention_context="Friend was here"
@@ -159,7 +162,7 @@ class TestContextAssembler:
         
         context = context_assembler.assemble_context(
             client_id=client_id,
-            session_id=1,
+            session_id=sample_session,
             user_message="test"
         )
         

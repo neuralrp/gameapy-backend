@@ -3,7 +3,7 @@
 Auto-seed Personas on Startup
 
 This module provides automatic persona seeding for Gameapy on startup.
-It checks if any counselors exist in the database, and if none are found,
+It checks if any counselors exist in database, and if none are found,
 it runs the seed_personas script to import all personas from JSON files.
 
 Environment Variables:
@@ -11,13 +11,13 @@ Environment Variables:
 
 Usage:
     from utils.seed_personas_auto import ensure_personas_sealed
-    ensure_personas_sealed(db_path)
+    ensure_personas_sealed(database_url)
 """
 
 import os
 import sys
 import logging
-import sqlite3
+import psycopg2
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +27,15 @@ def is_auto_seed_enabled():
     return os.getenv("AUTO_SEED_PERSONAS", "true").lower() in ("true", "1", "yes", "on")
 
 
-def has_counselors(db_path: str):
+def has_counselors(database_url: str) -> bool:
     """Check if any counselors exist in the database."""
     try:
-        conn = sqlite3.connect(db_path)
+        conn = psycopg2.connect(database_url)
         cursor = conn.cursor()
-        result = cursor.execute(
+        cursor.execute(
             "SELECT COUNT(*) FROM counselor_profiles WHERE is_active = TRUE"
-        ).fetchone()
+        )
+        result = cursor.fetchone()
         conn.close()
         return result[0] > 0
     except Exception as e:
@@ -42,71 +43,71 @@ def has_counselors(db_path: str):
         return False
 
 
-def ensure_personas_sealed(db_path: str):
+def ensure_personas_sealed(database_url: str):
     """
-    Ensure personas are seeded in the database.
-    
+    Ensure personas are seeded in database.
+
     This function checks if auto-seeding is enabled and if any counselors
     exist. If no counselors are found and auto-seeding is enabled, it runs
     the seed_personas script to import all personas from JSON files.
-    
+
     Args:
-        db_path: Database path to use (required, no default for safety)
+        database_url: PostgreSQL connection URL to use
     """
     if not is_auto_seed_enabled():
         logger.info("[AUTO-SEED] Auto-seeding disabled via AUTO_SEED_PERSONAS")
         return
-    
+
     # Check if counselors already exist
-    if has_counselors(db_path):
+    if has_counselors(database_url):
         logger.info("[AUTO-SEED] Counselors already exist, skipping seed")
         return
-    
+
     logger.info("[AUTO-SEED] No counselors found, starting seed process...")
-    
+
     try:
         # Import Database and seed_personas after ensuring we're in the right path
         sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         from app.db.database import Database
         from scripts.seed_personas import load_persona_files, seed_personas
-        
-        # Create database instance with the provided db_path
-        db = Database(db_path)
-        
+
+        # Create database instance (it will use database_url from settings)
+        db = Database()
+
         # Load all persona files
         personas = load_persona_files(name_filter=None)
-        
+
         if not personas:
             logger.warning("[AUTO-SEED] No persona files found in data/personas/")
             return
-        
+
         # Seed to database
         summary = seed_personas(db, personas)
-        
+
         # Log summary
         if summary['created']:
             logger.info(f"[AUTO-SEED] Created {len(summary['created'])} persona(s): {', '.join(summary['created'])}")
-        
+
         if summary['updated']:
             logger.info(f"[AUTO-SEED] Updated {len(summary['updated'])} persona(s): {', '.join(summary['updated'])}")
-        
+
         if summary['failed']:
             logger.error(f"[AUTO-SEED] Failed to seed {len(summary['failed'])} persona(s)")
             for failure in summary['failed']:
                 logger.error(f"  - {failure['name']}: {failure['error']}")
-        
+
         if not summary['failed']:
             logger.info("[AUTO-SEED] All personas seeded successfully")
-        
+
     except Exception as e:
         logger.error(f"[AUTO-SEED] Failed to seed personas: {e}")
         import traceback
         traceback.print_exc()
-        # Don't raise - we don't want to prevent the server from starting
+        # Don't raise - we don't want to prevent server from starting
 
 
 if __name__ == "__main__":
     # Allow running this module directly for testing
     logging.basicConfig(level=logging.INFO)
     from app.core.config import settings
-    ensure_personas_sealed(settings.database_path or "gameapy.db")
+    ensure_personas_sealed(settings.database_url)

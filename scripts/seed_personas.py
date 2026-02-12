@@ -95,10 +95,11 @@ def get_counselor_by_name(db, name):
     """Get counselor ID by name."""
     with db._get_connection() as conn:
         cursor = conn.cursor()
-        result = cursor.execute(
-            "SELECT id FROM counselor_profiles WHERE name = ? AND is_active = TRUE",
+        cursor.execute(
+            "SELECT id FROM counselor_profiles WHERE name = %s AND is_active = TRUE",
             (name,)
-        ).fetchone()
+        )
+        result = cursor.fetchone()
         return result[0] if result else None
 
 
@@ -111,7 +112,6 @@ def seed_personas(db, personas):
     }
     
     print(f"\n[INFO] Starting seed process for {len(personas)} personas")
-    print(f"[INFO] Database path: {db.db_path}")
     
     for persona_info in personas:
         filepath = persona_info['filepath']
@@ -134,7 +134,7 @@ def seed_personas(db, personas):
                 # Delete old version
                 with db._get_connection() as conn:
                     conn.execute(
-                        "DELETE FROM counselor_profiles WHERE id = ?",
+                        "DELETE FROM counselor_profiles WHERE id = %s",
                         (existing_id,)
                     )
                     conn.commit()

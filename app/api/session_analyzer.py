@@ -1,32 +1,21 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any
 from ..models.schemas import APIResponse
 from ..db.database import db
+from ..auth import get_current_user
 
 
 router = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
 
 
 @router.post("/{session_id}/analyze")
-async def analyze_session_for_card_updates(session_id: int) -> APIResponse:
+async def analyze_session_for_card_updates(
+    session_id: int,
+    current_user: dict = Depends(get_current_user)
+) -> APIResponse:
     """
     Analyze completed session and update cards invisibly.
-
-    Called when user ends a counseling session. Runs CardUpdater
-    to analyze transcript and apply updates to character cards, self cards,
-    and world events.
-
-    Response is minimal (only counters) to maintain "invisible updates" philosophy.
-    Detailed changes are logged in change_log and performance_metrics tables.
-
-    Returns:
-        {
-            "success": true,
-            "message": "Session analysis complete.",
-            "data": {
-                "cards_updated": 3
-            }
-        }
+    Uses authenticated user's ID from JWT.
     """
     try:
         session = db.get_session(session_id)
@@ -34,6 +23,12 @@ async def analyze_session_for_card_updates(session_id: int) -> APIResponse:
             return APIResponse(
                 success=False,
                 message="Session not found"
+            )
+        
+        if session['client_id'] != current_user["id"]:
+            return APIResponse(
+                success=False,
+                message="Access denied"
             )
 
         messages = db.get_session_messages(session_id)

@@ -1,23 +1,16 @@
 import json
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Dict, Any, Optional, List
 from ..models.schemas import (
     APIResponse,
     CardGenerateRequest,
-    CardGenerateResponse,
     CardSaveRequest,
-    CardSaveResponse,
-    PaginationInfo,
-    UnifiedCard,
     CardUpdateRequest,
-    CardSearchRequest,
-    CardSearchResponse,
-    SearchResult,
-    CardListResponse
 )
 from ..services.card_generator import card_generator
 from ..db.database import db
 from ..utils.card_metadata import reset_card_metadata
+from ..auth import get_current_user
 from datetime import datetime
 
 
@@ -25,29 +18,12 @@ router = APIRouter(prefix="/api/v1/cards", tags=["cards"])
 
 
 @router.post("/generate-from-text", response_model=APIResponse)
-async def generate_card_from_text(request: CardGenerateRequest) -> APIResponse:
+async def generate_card_from_text(
+    request: CardGenerateRequest,
+    current_user: dict = Depends(get_current_user)
+) -> APIResponse:
     """
     Generate a structured card from plain text (preview only, not saved).
-
-    Request Body:
-    {
-        "card_type": "self|character|world",
-        "plain_text": "My mom is overprotective...",
-        "context": "Optional extra context",
-        "name": "Optional name for character cards"
-    }
-
-    Response:
-    {
-        "success": true,
-        "message": "Card generated successfully",
-        "data": {
-            "card_type": "character",
-            "generated_card": {...full card JSON...},
-            "preview": true,
-            "fallback": false
-        }
-    }
     """
     try:
         result = await card_generator.generate_card(
@@ -76,35 +52,27 @@ async def generate_card_from_text(request: CardGenerateRequest) -> APIResponse:
 
 
 @router.post("/save", response_model=APIResponse)
-async def save_card(request: CardSaveRequest) -> APIResponse:
+async def save_card(
+    request: CardSaveRequest,
+    current_user: dict = Depends(get_current_user)
+) -> APIResponse:
     """
     Save a generated card to database.
-
-    Request Body:
-    {
-        "client_id": 1,
-        "card_type": "self|character|world",
-        "card_data": {...full card JSON...}
-    }
-
-    Response:
-    {
-        "success": true,
-        "message": "Card saved successfully",
-        "data": {"card_id": 123}
-    }
+    Uses authenticated user's ID from JWT.
     """
     try:
+        client_id = current_user["id"]
+        
         if request.card_type == "self":
             normalized_payload = db.normalize_self_card_payload(request.card_data)
             card_id = db.upsert_self_card(
-                client_id=request.client_id,
+                client_id=client_id,
                 card_json=normalized_payload,
                 changed_by='user'
             )
         elif request.card_type == "character":
             card_id = db.create_character_card(
-                client_id=request.client_id,
+                client_id=client_id,
                 card_name=request.card_data["name"],
                 relationship_type=request.card_data["relationship_type"],
                 relationship_label=request.card_data.get("relationship_label"),
@@ -113,7 +81,7 @@ async def save_card(request: CardSaveRequest) -> APIResponse:
         elif request.card_type == "world":
             import uuid
             card_id = db.create_world_event(
-                client_id=request.client_id,
+                client_id=client_id,
                 entity_id=request.card_data.get("entity_id", f"world_{uuid.uuid4().hex}"),
                 title=request.card_data["title"],
                 key_array=json.dumps(request.card_data["key_array"]),
@@ -141,21 +109,18 @@ async def save_card(request: CardSaveRequest) -> APIResponse:
         )
 
 
-# ============================================================
-# Phase 3: Unified Card Management Endpoints
-# ============================================================
-
 @router.put("/{card_id}", response_model=APIResponse)
-async def update_card(card_id: int, request: CardUpdateRequest) -> APIResponse:
+async def update_card(
+    card_id: int,
+    request: CardUpdateRequest,
+    current_user: dict = Depends(get_current_user)
+) -> APIResponse:
     """
     Partially update a card (merge provided fields, keep existing).
-
-    Only fields present in request are updated.
-    Requires card_type to identify which table to update.
     """
     try:
+        client_id = current_user["id"]
         success = False
-        # Convert request to dict to handle flexible field mapping
         request_dict = request.model_dump(exclude_none=True, exclude={'card_type'})
 
         if request.card_type == 'self':
@@ -165,13 +130,17 @@ async def update_card(card_id: int, request: CardUpdateRequest) -> APIResponse:
                     success=False,
                     message="Self card not found"
                 )
-            client_id = self_card['client_id']
+            
+            if self_card['client_id'] != client_id:
+                return APIResponse(
+                    success=False,
+                    message="Access denied"
+                )
 
-            # Build updated card_json from existing data + new fields
-            existing_data = json.loads(self_card['card_json'])
+            card_json = self_card['card_json']
+            existing_data = json.loads(card_json) if isinstance(card_json, str) else card_json
             updated_data = {**existing_data}
 
-            # Map frontend field names to card_json fields
             if 'name' in request_dict:
                 updated_data['name'] = request_dict.pop('name')
             elif 'card_name' in request_dict:
@@ -184,8 +153,6 @@ async def update_card(card_id: int, request: CardUpdateRequest) -> APIResponse:
             if 'background' in request_dict:
                 updated_data['background'] = request_dict.pop('background')
 
-            # Serialize to JSON string and save
-            # Reset metadata when user edits
             updated_data_with_metadata = reset_card_metadata(updated_data)
             success = db.update_self_card(
                 client_id=client_id,
@@ -193,7 +160,6 @@ async def update_card(card_id: int, request: CardUpdateRequest) -> APIResponse:
                 changed_by='user'
             )
 
-            # Handle auto_update_enabled
             if 'auto_update_enabled' in request_dict:
                 db.update_auto_update_enabled(
                     card_type='self',
@@ -202,9 +168,21 @@ async def update_card(card_id: int, request: CardUpdateRequest) -> APIResponse:
                 )
 
         elif request.card_type == 'character':
+            char_card = db.get_character_card_by_id(card_id)
+            if not char_card:
+                return APIResponse(
+                    success=False,
+                    message="Character card not found"
+                )
+            
+            if char_card['client_id'] != client_id:
+                return APIResponse(
+                    success=False,
+                    message="Access denied"
+                )
+            
             update_kwargs = {}
 
-            # Map frontend 'name' to backend 'card_name'
             if 'name' in request_dict:
                 update_kwargs['card_name'] = request_dict.pop('name')
             elif 'card_name' in request_dict:
@@ -215,22 +193,18 @@ async def update_card(card_id: int, request: CardUpdateRequest) -> APIResponse:
             if 'relationship_label' in request_dict:
                 update_kwargs['relationship_label'] = request_dict.pop('relationship_label')
 
-            # Handle personality field - merge into existing card_json
             if 'personality' in request_dict or 'card_data' in request_dict:
-                char_card = db.get_character_card_by_id(card_id)
-                if char_card:
-                    existing_card_data = json.loads(char_card['card_json']) if char_card['card_json'] else {}
-                    updated_card_data = {**existing_card_data}
+                existing_card_data = json.loads(char_card['card_json']) if char_card['card_json'] else {}
+                updated_card_data = {**existing_card_data}
 
-                    if 'personality' in request_dict:
-                        updated_card_data['personality'] = request_dict.pop('personality')
-                    if 'card_data' in request_dict:
-                        updated_card_data.update(request_dict.pop('card_data'))
+                if 'personality' in request_dict:
+                    updated_card_data['personality'] = request_dict.pop('personality')
+                if 'card_data' in request_dict:
+                    updated_card_data.update(request_dict.pop('card_data'))
 
-                    update_kwargs['card_json'] = json.dumps(updated_card_data)
+                update_kwargs['card_json'] = json.dumps(updated_card_data)
 
             if update_kwargs:
-                # Reset metadata when user edits
                 if 'card_json' in update_kwargs:
                     card_data = json.loads(update_kwargs['card_json'])
                     card_data_with_metadata = reset_card_metadata(card_data)
@@ -238,7 +212,6 @@ async def update_card(card_id: int, request: CardUpdateRequest) -> APIResponse:
                 update_kwargs['changed_by'] = 'user'
                 success = db.update_character_card(card_id, **update_kwargs)
 
-            # Handle auto_update_enabled
             if 'auto_update_enabled' in request_dict:
                 db.update_auto_update_enabled(
                     card_type='character',
@@ -247,6 +220,19 @@ async def update_card(card_id: int, request: CardUpdateRequest) -> APIResponse:
                 )
 
         elif request.card_type == 'world':
+            world_event = db.get_world_event_by_id(card_id)
+            if not world_event:
+                return APIResponse(
+                    success=False,
+                    message="World event not found"
+                )
+            
+            if world_event['client_id'] != client_id:
+                return APIResponse(
+                    success=False,
+                    message="Access denied"
+                )
+            
             update_kwargs = {}
             if 'title' in request_dict:
                 update_kwargs['title'] = request_dict.pop('title')
@@ -265,7 +251,6 @@ async def update_card(card_id: int, request: CardUpdateRequest) -> APIResponse:
                 update_kwargs['changed_by'] = 'user'
                 success = db.update_world_event(card_id, **update_kwargs)
 
-            # Handle auto_update_enabled
             if 'auto_update_enabled' in request_dict:
                 db.update_auto_update_enabled(
                     card_type='world',
@@ -300,7 +285,8 @@ async def update_card(card_id: int, request: CardUpdateRequest) -> APIResponse:
 @router.put("/{card_id}/toggle-auto-update", response_model=APIResponse)
 async def toggle_auto_update(
     card_id: int,
-    card_type: str = Query(..., description="Card type: self, character, world")
+    card_type: str = Query(..., description="Card type: self, character, world"),
+    current_user: dict = Depends(get_current_user)
 ) -> APIResponse:
     """
     Toggle auto-update enabled status for a card.
@@ -337,7 +323,11 @@ async def toggle_auto_update(
 
 
 @router.put("/{card_type}/{id}/pin")
-async def pin_card_endpoint(card_type: str, id: int):
+async def pin_card_endpoint(
+    card_type: str,
+    id: int,
+    current_user: dict = Depends(get_current_user)
+):
     """Pin a card to always load in context."""
     success = db.pin_card(card_type, id)
     return APIResponse(
@@ -347,7 +337,11 @@ async def pin_card_endpoint(card_type: str, id: int):
 
 
 @router.put("/{card_type}/{id}/unpin")
-async def unpin_card_endpoint(card_type: str, id: int):
+async def unpin_card_endpoint(
+    card_type: str,
+    id: int,
+    current_user: dict = Depends(get_current_user)
+):
     """Unpin a card."""
     success = db.unpin_card(card_type, id)
     return APIResponse(
@@ -359,15 +353,16 @@ async def unpin_card_endpoint(card_type: str, id: int):
 @router.get("/search", response_model=APIResponse)
 async def search_cards(
     q: str = Query(..., description="Search query"),
-    client_id: Optional[int] = Query(None, description="Filter by client ID"),
     types: Optional[str] = Query(None, description="Comma-separated types: self,character,world"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100)
+    page_size: int = Query(20, ge=1, le=100),
+    current_user: dict = Depends(get_current_user)
 ) -> APIResponse:
     """
-    Search across all card types or filter by specific types.
+    Search across all card types for current user.
     """
     try:
+        client_id = current_user["id"]
         type_filter = None
         if types:
             type_filter = [t.strip() for t in types.split(',')]
@@ -407,7 +402,8 @@ async def search_cards(
 @router.delete("/{card_id}", response_model=APIResponse)
 async def delete_card(
     card_id: int,
-    card_type: str = Query(..., description="Card type: self, character, world")
+    card_type: str = Query(..., description="Card type: self, character, world"),
+    current_user: dict = Depends(get_current_user)
 ) -> APIResponse:
     """
     Delete a card by ID and type.

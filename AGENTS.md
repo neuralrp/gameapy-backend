@@ -53,7 +53,7 @@ gameapy-web/              # Web frontend repo
 
 **Completed Backend**: Phases 1-7 (All backend features + complete test infrastructure)
 **Completed Frontend**: Phases 0-6 (Web MVP complete + deployed to Vercel)
-**Latest Update**: Field-level timestamp metadata - track individual field changes with smart recency indicators for LLM context, Railway healthcheck fix, CardInventoryModal iOS-style redesign, Easter egg "Summon Deirdre", schema migrations 004-006, auto-seed personas
+**Latest Update**: Custom Advisors feature - users can create up to 5 custom AI counselors with 3-question creation flow, migration 008 with performance_metrics table, advisor tab in CardInventoryModal
 **Production Deploy**: Backend on Railway, Frontend on Vercel
 **Status**: Live at https://gameapy-web.vercel.app
 
@@ -82,6 +82,13 @@ gameapy-web/              # Web frontend repo
   - **Database Directory Auto-Creation**: Automatic `/app/data/` creation on Railway if missing
   - **Database Path Logging**: Startup logs show `[INFO] Database path: <path>` for debugging
   - **Railway Healthcheck Fix**: Database initialization moved to FastAPI startup event, allowing immediate healthcheck response before volume mount
+ - **Custom Advisors**: Users can create up to 5 custom AI counselors
+   - 3-question creation flow (name, specialty, vibe)
+   - LLM generates complete persona from brief description
+   - Stored in counselor_profiles with is_custom flag
+   - Full CRUD operations via API
+   - Soft-delete (preserves session history)
+   - Performance metrics tracking in performance_metrics table
 
 ### What's Working (Frontend - Web MVP)
 - **Phase 0 Complete**: React + Vite + TypeScript project initialized
@@ -118,7 +125,13 @@ gameapy-web/              # Web frontend repo
 - Responsive layouts for mobile/tablet/desktop
 - Retry buttons for all failed API requests
 - Mobile keyboard overlap prevention (flex-shrink-0 on headers/footers)
-- Vercel configuration with Railway backend integration
+ - Vercel configuration with Railway backend integration
+ - **Custom Advisors UI**:
+   - "+" button on counselor selection for creator
+   - 3-step form with validation (AdvisorCreatorScreen)
+   - Scrollable counselor grid handles unlimited advisors
+   - "Advisor" tab in CardInventoryModal for management
+   - Delete functionality with confirmation
 
 ---
 
@@ -313,19 +326,22 @@ response = await simple_llm_client.chat_completion(
 |------|---------|
 | `backend/main.py` | FastAPI app, route registration |
 | `backend/app/db/database.py` | All DB operations (650+ lines) |
-| `backend/app/api/cards.py` | Card management endpoints |
+ | `backend/app/api/cards.py` | Card management endpoints |
+| `backend/app/api/custom_counselors.py` | Custom advisors API endpoints (CRUD) |
 | `backend/app/api/guide.py` | Guide onboarding endpoints |
 | `backend/app/api/session_analyzer.py` | Session analysis endpoint |
 | `backend/app/services/card_generator.py` | LLM card generation (max_tokens=4000) |
+| `backend/app/services/advisor_generator.py` | LLM custom advisor persona generation |
 | `backend/app/services/guide_system.py` | Organic guide conversation system |
 | `backend/app/services/card_updater.py` | Auto-update service |
 | `backend/app/services/simple_llm_fixed.py` | HTTP client for OpenRouter API |
- | `backend/app/utils/card_metadata.py` | Field-level timestamp tracking for card entries |
- | `backend/app/models/schemas.py` | Pydantic models |
- | `backend/app/config/core_truths.py` | Universal principles for all personas (non-clinical AI companion) |
- | `backend/data/personas/*.json` | Persona definitions (who_you_are, your_vibe, your_worldview) |
- | `backend/scripts/seed_personas.py` | Persona JSON → DB sync script (supports is_hidden) |
- | `backend/migrations/005_add_hidden_flag.py` | Add is_hidden column for Easter egg counselors |
+| `backend/app/utils/card_metadata.py` | Field-level timestamp tracking for card entries |
+| `backend/app/models/schemas.py` | Pydantic models |
+| `backend/app/config/core_truths.py` | Universal principles for all personas (non-clinical AI companion) |
+| `backend/data/personas/*.json` | Persona definitions (who_you_are, your_vibe, your_worldview) |
+| `backend/scripts/seed_personas.py` | Persona JSON → DB sync script (supports is_hidden) |
+| `backend/migrations/005_add_hidden_flag.py` | Add is_hidden column for Easter egg counselors |
+| `backend/migrations/008_add_custom_advisors.py` | Custom advisors support (client_id, is_custom, performance_metrics) |
  | `backend/schema.sql` | Database schema |
  | `backend/pytest.ini` | Pytest configuration (asyncio, markers, test discovery, coverage) |
  | `backend/railway.json` | Railway configuration (volume mount path, deployment settings) |
@@ -339,9 +355,10 @@ response = await simple_llm_client.chat_completion(
 | `gameapy-web/src/index.css` | Global styles + Tailwind v4 |
 | `gameapy-web/src/contexts/AppContext.tsx` | Global state (client ID, counselor, inventory) |
 | `gameapy-web/src/services/api.ts` | HTTP client for backend API |
-| `gameapy-web/src/screens/CounselorSelection.tsx` | Counselor selection screen ✅ |
+ | `gameapy-web/src/screens/CounselorSelection.tsx` | Counselor selection screen with creator button ✅ |
+| `gameapy-web/src/screens/AdvisorCreatorScreen.tsx` | 3-step custom advisor creation form ✅ |
 | `gameapy-web/src/screens/ChatScreen.tsx` | Chat interface (UI complete, with polish) ✅ |
-| `gameapy-web/src/screens/CardInventoryModal.tsx` | Card inventory modal (complete with edit) ✅ |
+| `gameapy-web/src/screens/CardInventoryModal.tsx` | Card inventory modal with Advisor tab (complete with edit) ✅ |
 | `gameapy-web/src/screens/GuideScreen.tsx` | Organic card creation flow ✅ |
 | `gameapy-web/src/components/ui/button.tsx` | Button component with GBA styling |
 | `gameapy-web/src/components/counselor/CounselorCard.tsx` | Counselor card component |
@@ -366,8 +383,9 @@ response = await simple_llm_client.chat_completion(
 | `backend/tests/test_api_chat.py` | Chat API tests | 11 tests ✅ |
 | `backend/tests/test_api_guide.py` | Guide API tests | 8 tests ✅ |
 | `backend/tests/test_api_session_analyzer.py` | Session analyzer tests | 5 tests ✅ |
-| `backend/tests/test_e2e_flows.py` | E2E flow tests | 6 tests ✅ |
+ | `backend/tests/test_e2e_flows.py` | E2E flow tests | 6 tests ✅ |
 | `backend/tests/test_llm.py` | Real LLM integration tests | 3 tests ✅ |
+| `backend/tests/test_custom_counselors.py` | Custom advisors test suite | 19 tests ✅ |
 
 ---
 

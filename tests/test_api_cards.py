@@ -21,9 +21,9 @@ class TestCardsGenerateSave:
     """Test /generate-from-text and /save endpoints."""
 
     @pytest.mark.integration
-    def test_generate_from_text_success_self(self, test_client, mock_llm_success):
+    def test_generate_from_text_success_self(self, test_client_with_auth, mock_llm_success):
         """Generate self card preview."""
-        response = test_client.post(
+        response = test_client_with_auth.post(
             "/api/v1/cards/generate-from-text",
             json={
                 "card_type": "self",
@@ -38,9 +38,9 @@ class TestCardsGenerateSave:
         assert 'generated_card' in data['data']
 
     @pytest.mark.integration
-    def test_generate_from_text_success_character(self, test_client, mock_llm_success):
+    def test_generate_from_text_success_character(self, test_client_with_auth, mock_llm_success):
         """Generate character card preview."""
-        response = test_client.post(
+        response = test_client_with_auth.post(
             "/api/v1/cards/generate-from-text",
             json={
                 "card_type": "character",
@@ -56,9 +56,9 @@ class TestCardsGenerateSave:
         assert 'generated_card' in data['data']
 
     @pytest.mark.integration
-    def test_generate_from_text_success_world(self, test_client, mock_llm_success):
+    def test_generate_from_text_success_world(self, test_client_with_auth, mock_llm_success):
         """Generate world event preview."""
-        response = test_client.post(
+        response = test_client_with_auth.post(
             "/api/v1/cards/generate-from-text",
             json={
                 "card_type": "world",
@@ -73,9 +73,9 @@ class TestCardsGenerateSave:
         assert 'generated_card' in data['data']
 
     @pytest.mark.integration
-    def test_generate_from_text_invalid_type(self, test_client):
+    def test_generate_from_text_invalid_type(self, test_client_with_auth):
         """Invalid card_type returns error."""
-        response = test_client.post(
+        response = test_client_with_auth.post(
             "/api/v1/cards/generate-from-text",
             json={
                 "card_type": "invalid",
@@ -89,12 +89,11 @@ class TestCardsGenerateSave:
         assert 'invalid' in data['message'].lower()
 
     @pytest.mark.integration
-    def test_save_card_success(self, test_client, sample_client):
+    def test_save_card_success(self, test_client_with_auth):
         """Save generated card to database."""
-        response = test_client.post(
+        response = test_client_with_auth.post(
             "/api/v1/cards/save",
             json={
-                "client_id": sample_client,
                 "card_type": "self",
                 "card_data": {
                     "spec": "gameapy_self_card_v1",
@@ -113,17 +112,16 @@ class TestCardsGenerateSave:
         assert data['data']['card_id'] > 0
 
     @pytest.mark.integration
-    def test_save_self_card_upsert_updates_existing(self, test_client, sample_client):
+    def test_save_self_card_upsert_updates_existing(self, test_client_with_auth, sample_user):
         """Saving self card twice updates the existing record."""
         initial_id = db.create_self_card(
-            client_id=sample_client,
+            client_id=sample_user,
             card_json=json.dumps({"name": "Test User", "personality": "Old"})
         )
 
-        response = test_client.post(
+        response = test_client_with_auth.post(
             "/api/v1/cards/save",
             json={
-                "client_id": sample_client,
                 "card_type": "self",
                 "card_data": {
                     "spec": "gameapy_self_card_v1",
@@ -140,15 +138,16 @@ class TestCardsGenerateSave:
         assert data['success'] is True
         assert data['data']['card_id'] == initial_id
 
-        self_card = db.get_self_card(sample_client)
+        self_card = db.get_self_card(sample_user)
         assert self_card is not None
-        payload = json.loads(self_card['card_json'])
+        card_json = self_card['card_json']
+        payload = json.loads(card_json) if isinstance(card_json, str) else card_json
         assert payload.get('personality') == "New"
 
     @pytest.mark.integration
-    def test_generate_from_text_llm_error(self, test_client, mock_llm_error):
+    def test_generate_from_text_llm_error(self, test_client_with_auth, mock_llm_error):
         """LLM error returns graceful failure message."""
-        response = test_client.post(
+        response = test_client_with_auth.post(
             "/api/v1/cards/generate-from-text",
             json={
                 "card_type": "self",
@@ -162,9 +161,9 @@ class TestCardsGenerateSave:
         assert 'Failed to generate card' in data['message']
 
     @pytest.mark.integration
-    def test_generate_from_text_fallback(self, test_client, mock_llm_fallback):
+    def test_generate_from_text_fallback(self, test_client_with_auth, mock_llm_fallback):
         """3 decode failures return fallback object with fallback flag."""
-        response = test_client.post(
+        response = test_client_with_auth.post(
             "/api/v1/cards/generate-from-text",
             json={
                 "card_type": "self",
@@ -186,14 +185,14 @@ class TestCardsUpdateToggle:
     """Test /update and /toggle-auto-update endpoints."""
 
     @pytest.mark.integration
-    def test_update_card_partial_self(self, test_client, sample_client):
+    def test_update_card_partial_self(self, test_client_with_auth, sample_user):
         """Partial update self card."""
         card_id = db.create_self_card(
-            client_id=sample_client,
+            client_id=sample_user,
             card_json=json.dumps({"spec": "gameapy_self_card_v1", "data": {"personality": "Old"}})
         )
         
-        response = test_client.put(
+        response = test_client_with_auth.put(
             f"/api/v1/cards/{card_id}",
             json={
                 "card_type": "self",
@@ -207,16 +206,16 @@ class TestCardsUpdateToggle:
         assert data['data']['card_id'] == card_id
 
     @pytest.mark.integration
-    def test_update_card_partial_character(self, test_client, sample_client):
+    def test_update_card_partial_character(self, test_client_with_auth, sample_user):
         """Partial update character card."""
         card_id = db.create_character_card(
-            client_id=sample_client,
+            client_id=sample_user,
             card_name="Old Name",
             relationship_type="friend",
             card_data={"name": "Old Name"}
         )
         
-        response = test_client.put(
+        response = test_client_with_auth.put(
             f"/api/v1/cards/{card_id}",
             json={
                 "card_type": "character",
@@ -229,10 +228,10 @@ class TestCardsUpdateToggle:
         assert data['success'] is True
 
     @pytest.mark.integration
-    def test_update_card_partial_world(self, test_client, sample_client):
+    def test_update_card_partial_world(self, test_client_with_auth, sample_user):
         """Partial update world event."""
         card_id = db.create_world_event(
-            client_id=sample_client,
+            client_id=sample_user,
             entity_id=f"world_{uuid.uuid4().hex}",
             title="Old Title",
             key_array='["old"]',
@@ -240,7 +239,7 @@ class TestCardsUpdateToggle:
             event_type="other"
         )
         
-        response = test_client.put(
+        response = test_client_with_auth.put(
             f"/api/v1/cards/{card_id}",
             json={
                 "card_type": "world",
@@ -253,16 +252,16 @@ class TestCardsUpdateToggle:
         assert data['success'] is True
 
     @pytest.mark.integration
-    def test_toggle_auto_update_enable(self, test_client, sample_client):
+    def test_toggle_auto_update_enable(self, test_client_with_auth, sample_user):
         """Enable auto-update for card."""
         card_id = db.create_character_card(
-            client_id=sample_client,
+            client_id=sample_user,
             card_name="Test",
             relationship_type="friend",
             card_data={"name": "Test"}
         )
         
-        response = test_client.put(
+        response = test_client_with_auth.put(
             f"/api/v1/cards/{card_id}/toggle-auto-update?card_type=character"
         )
         
@@ -271,17 +270,17 @@ class TestCardsUpdateToggle:
         assert data['success'] is True
 
     @pytest.mark.integration
-    def test_toggle_auto_update_disable(self, test_client, sample_client):
+    def test_toggle_auto_update_disable(self, test_client_with_auth, sample_user):
         """Disable auto-update for card."""
         card_id = db.create_character_card(
-            client_id=sample_client,
+            client_id=sample_user,
             card_name="Test",
             relationship_type="friend",
             card_data={"name": "Test"}
         )
         
-        test_client.put(f"/api/v1/cards/{card_id}/toggle-auto-update?card_type=character")
-        response = test_client.put(f"/api/v1/cards/{card_id}/toggle-auto-update?card_type=character")
+        test_client_with_auth.put(f"/api/v1/cards/{card_id}/toggle-auto-update?card_type=character")
+        response = test_client_with_auth.put(f"/api/v1/cards/{card_id}/toggle-auto-update?card_type=character")
         
         assert response.status_code == 200
         data = response.json()
@@ -293,16 +292,16 @@ class TestCardsPinUnpin:
     """Test pin/unpin endpoints."""
 
     @pytest.mark.integration
-    def test_pin_card_endpoint_success(self, test_client, sample_client):
+    def test_pin_card_endpoint_success(self, test_client_with_auth, sample_user):
         """POST /{card_type}/{id}/pin."""
         card_id = db.create_character_card(
-            client_id=sample_client,
+            client_id=sample_user,
             card_name="Test",
             relationship_type="friend",
             card_data={"name": "Test"}
         )
         
-        response = test_client.put(f"/api/v1/cards/character/{card_id}/pin")
+        response = test_client_with_auth.put(f"/api/v1/cards/character/{card_id}/pin")
         
         assert response.status_code == 200
         data = response.json()
@@ -310,17 +309,17 @@ class TestCardsPinUnpin:
         assert 'pinned' in data['message'].lower()
 
     @pytest.mark.integration
-    def test_unpin_card_endpoint_success(self, test_client, sample_client):
+    def test_unpin_card_endpoint_success(self, test_client_with_auth, sample_user):
         """POST /{card_type}/{id}/unpin."""
         card_id = db.create_character_card(
-            client_id=sample_client,
+            client_id=sample_user,
             card_name="Test",
             relationship_type="friend",
             card_data={"name": "Test"}
         )
         
-        test_client.put(f"/api/v1/cards/character/{card_id}/pin")
-        response = test_client.put(f"/api/v1/cards/character/{card_id}/unpin")
+        test_client_with_auth.put(f"/api/v1/cards/character/{card_id}/pin")
+        response = test_client_with_auth.put(f"/api/v1/cards/character/{card_id}/unpin")
         
         assert response.status_code == 200
         data = response.json()
@@ -333,20 +332,20 @@ class TestCardsSearchDelete:
     """Test /search and /delete endpoints."""
 
     @pytest.mark.integration
-    def test_search_cards_all_types(self, test_client, sample_client):
+    def test_search_cards_all_types(self, test_client_with_auth, sample_user):
         """Search across all card types."""
         db.create_self_card(
-            client_id=sample_client,
+            client_id=sample_user,
             card_json=json.dumps({"spec": "gameapy_self_card_v1", "data": {"name": "Test User"}})
         )
         db.create_character_card(
-            client_id=sample_client,
+            client_id=sample_user,
             card_name="Mom",
             relationship_type="family",
             card_data={"name": "Mom"}
         )
         db.create_world_event(
-            client_id=sample_client,
+            client_id=sample_user,
             entity_id=f"world_{uuid.uuid4().hex}",
             title="Graduation",
             key_array='["graduation"]',
@@ -354,7 +353,7 @@ class TestCardsSearchDelete:
             event_type="other"
         )
         
-        response = test_client.get("/api/v1/cards/search?q=test")
+        response = test_client_with_auth.get("/api/v1/cards/search?q=test")
         
         assert response.status_code == 200
         data = response.json()
@@ -362,20 +361,20 @@ class TestCardsSearchDelete:
         assert len(data['data']['items']) > 0
 
     @pytest.mark.integration
-    def test_search_cards_filtered_by_type(self, test_client, sample_client):
+    def test_search_cards_filtered_by_type(self, test_client_with_auth, sample_user):
         """Search specific card type."""
         db.create_self_card(
-            client_id=sample_client,
+            client_id=sample_user,
             card_json=json.dumps({"spec": "gameapy_self_card_v1", "data": {"name": "Test"}})
         )
         db.create_character_card(
-            client_id=sample_client,
+            client_id=sample_user,
             card_name="Mom",
             relationship_type="family",
             card_data={"name": "Mom"}
         )
         
-        response = test_client.get("/api/v1/cards/search?q=test&types=character")
+        response = test_client_with_auth.get("/api/v1/cards/search?q=test&types=character")
         
         assert response.status_code == 200
         data = response.json()
@@ -384,20 +383,20 @@ class TestCardsSearchDelete:
             assert item['card_type'] == 'character'
 
     @pytest.mark.integration
-    def test_delete_card_success(self, test_client, sample_client):
+    def test_delete_card_success(self, test_client_with_auth, sample_user):
         """Delete card, verify gone from DB."""
         card_id = db.create_character_card(
-            client_id=sample_client,
+            client_id=sample_user,
             card_name="Test",
             relationship_type="friend",
             card_data={"name": "Test"}
         )
         
-        response = test_client.delete(f"/api/v1/cards/{card_id}?card_type=character")
+        response = test_client_with_auth.delete(f"/api/v1/cards/{card_id}?card_type=character")
         
         assert response.status_code == 200
         data = response.json()
         assert data['success'] is True
         
-        cards = db.get_character_cards(sample_client)
+        cards = db.get_character_cards(sample_user)
         assert len(cards) == 0

@@ -14,10 +14,13 @@ class Settings(BaseSettings):
     debug: bool = False
     environment: str = "development"
     
-    # Database
-    database_url: str = "sqlite:///gameapy.db"
-    test_database_url: str = "sqlite:///gameapy_test.db"
-    database_path: Optional[str] = None
+    # Database - PostgreSQL connection string
+    database_url: str = os.getenv("DATABASE_URL", "postgresql://localhost/gameapy")
+    test_database_url: str = os.getenv("TEST_DATABASE_URL", "postgresql://localhost/gameapy_test")
+    
+    # PostgreSQL connection pool settings
+    db_pool_min: int = 1
+    db_pool_max: int = 10
     
     # OpenRouter
     openrouter_api_key: str = os.getenv("OPENROUTER_API_KEY", "")
@@ -41,22 +44,11 @@ class Settings(BaseSettings):
     
     class Config:
         env_file = ".env"
+        extra = "ignore"
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._validate_recent_card_limit()
-        
-        # Set database path with Railway volume support
-        if not self.database_path:
-            # Check for Railway volume mount path (auto-injected)
-            railway_volume = os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
-            if railway_volume:
-                # Use Railway persistent volume
-                self.database_path = os.path.join(railway_volume, "gameapy.db")
-                os.makedirs(railway_volume, exist_ok=True)  # Ensure directory exists
-            else:
-                # Default to local development path
-                self.database_path = "gameapy.db"
     
     def _validate_recent_card_limit(self):
         """Validate and enforce recent_card_session_limit."""

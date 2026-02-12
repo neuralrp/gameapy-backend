@@ -8,7 +8,7 @@ that can only be summoned, not selected directly).
 
 import os
 import sys
-import sqlite3
+import psycopg2
 import logging
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -16,19 +16,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 logger = logging.getLogger(__name__)
 
 
-def migrate(db_path: str):
-    """Add is_hidden column to counselor_profiles table with explicit db_path."""
+def migrate(database_url: str):
+    """Add is_hidden column to counselor_profiles table with explicit database_url."""
     logger.info("[MIGRATION 005] Adding is_hidden column to counselor_profiles")
 
-    conn = sqlite3.connect(db_path)
+    conn = psycopg2.connect(database_url)
     cursor = conn.cursor()
 
     try:
         # Check if column already exists
-        cursor.execute("PRAGMA table_info(counselor_profiles)")
-        columns = [column[1] for column in cursor.fetchall()]
-
-        if 'is_hidden' in columns:
+        cursor.execute("""
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_name = 'counselor_profiles'
+            AND column_name = 'is_hidden'
+        """)
+        if cursor.fetchone():
             logger.info("[OK] Column is_hidden already exists")
             return
 
@@ -36,7 +39,7 @@ def migrate(db_path: str):
         logger.info("[INFO] Adding is_hidden column...")
         cursor.execute("""
             ALTER TABLE counselor_profiles
-            ADD COLUMN is_hidden BOOLEAN DEFAULT FALSE
+            ADD COLUMN IF NOT EXISTS is_hidden BOOLEAN DEFAULT FALSE
         """)
 
         # Mark Deirdre as hidden (Easter egg) - if she exists
@@ -45,7 +48,7 @@ def migrate(db_path: str):
             SELECT COUNT(*) FROM counselor_profiles WHERE LOWER(name) = 'deirdre'
         """)
         deirdre_exists = cursor.fetchone()[0]
-        
+
         if deirdre_exists > 0:
             cursor.execute("""
                 UPDATE counselor_profiles
@@ -65,10 +68,11 @@ def migrate(db_path: str):
         logger.error(f"[ERROR] Migration failed: {e}")
         raise
     finally:
+        cursor.close()
         conn.close()
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     from app.core.config import settings
-    migrate(settings.database_path or "gameapy.db")
+    migrate(settings.database_url)

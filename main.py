@@ -31,11 +31,10 @@ run_all_migrations()
 # Auto-seed personas if none exist
 from utils.seed_personas_auto import ensure_personas_sealed
 from app.core.config import settings
-db_path = settings.database_path or "gameapy.db"
 logger.info("=" * 60)
 logger.info("Checking for persona seeding...")
 logger.info("=" * 60)
-ensure_personas_sealed(db_path)
+ensure_personas_sealed(settings.database_url)
 
 logger.info("=" * 60)
 logger.info("Gameapy API startup complete")
@@ -52,7 +51,8 @@ from app.api.gameapy import router as gameapy_router
 from app.api.chat import router as chat_router
 from app.api.cards import router as cards_router
 from app.api.session_analyzer import router as session_analyzer_router
-from app.api.recovery import router as recovery_router
+from app.api.custom_counselors import router as custom_counselors_router
+from app.auth import router as auth_router
 
 # Configure CORS for Flutter development
 app.add_middleware(
@@ -108,7 +108,8 @@ app.include_router(gameapy_router, prefix="/api/v1", tags=["gameapy"])
 app.include_router(chat_router, prefix="/api/v1/chat", tags=["chat"])
 app.include_router(cards_router)
 app.include_router(session_analyzer_router)
-app.include_router(recovery_router)
+app.include_router(auth_router)
+app.include_router(custom_counselors_router)
 
 @app.get("/")
 async def root():

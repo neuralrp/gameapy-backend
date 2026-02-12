@@ -61,19 +61,17 @@ async def test_simple_llm_client():
 
 
 @pytest.mark.asyncio
-async def test_chat_with_counselor(test_client, sample_client, sample_counselor, mock_llm_success):
+async def test_chat_with_counselor(test_client_with_auth, sample_user, sample_counselor, mock_llm_success):
     """Test chat endpoint through FastAPI."""
 
-    # Create a session first
-    session_response = test_client.post(
-        "/api/v1/sessions",
-        json={"client_id": sample_client, "counselor_id": sample_counselor}
+    session_id = None
+    from app.db.database import db
+    session_id = db.create_session(
+        client_id=sample_user,
+        counselor_id=sample_counselor
     )
-    session_data = session_response.json()
-    session_id = session_data["data"]["session_id"]
 
-    # Send a message
-    response = test_client.post(
+    response = test_client_with_auth.post(
         f"/api/v1/chat/chat",
         json={
             "session_id": session_id,
@@ -91,18 +89,15 @@ async def test_chat_with_counselor(test_client, sample_client, sample_counselor,
 
 
 @pytest.mark.asyncio
-async def test_insight_extraction(test_client, sample_client, sample_counselor):
+async def test_insight_extraction(test_client_with_auth, sample_user, sample_counselor):
     """Test insight extraction endpoint."""
 
-    # Create a session first
-    session_response = test_client.post(
-        "/api/v1/sessions",
-        json={"client_id": sample_client, "counselor_id": sample_counselor}
+    from app.db.database import db
+    session_id = db.create_session(
+        client_id=sample_user,
+        counselor_id=sample_counselor
     )
-    session_data = session_response.json()
-    session_id = session_data["data"]["session_id"]
     
-    # Add some messages
     messages = [
         {"role": "user", "content": "I'm feeling anxious about work"},
         {"role": "assistant", "content": "Tell me more about what's causing the anxiety"},
@@ -110,13 +105,14 @@ async def test_insight_extraction(test_client, sample_client, sample_counselor):
     ]
     
     for msg in messages:
-        test_client.post(
-            f"/api/v1/messages?session_id={session_id}",
-            json=msg
+        db.add_message(
+            session_id=session_id,
+            role=msg["role"],
+            content=msg["content"],
+            speaker="client" if msg["role"] == "user" else "counselor"
         )
     
-    # Extract insights
-    response = test_client.post(
+    response = test_client_with_auth.post(
         f"/api/v1/chat/insights/extract?session_id={session_id}",
         json=["engagement", "mood", "insight"]
     )

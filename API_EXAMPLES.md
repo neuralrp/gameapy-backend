@@ -270,6 +270,90 @@ curl -X POST "http://localhost:8000/api/v1/chat" \
 
 ---
 
+## Custom Advisors API
+
+### Create Custom Advisor
+```bash
+curl -X POST "http://localhost:8000/api/v1/counselors/custom/create" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "client_id": 1,
+    "name": "Captain Wisdom",
+    "specialty": "Life advice with maritime metaphors",
+    "vibe": "Gruff but caring old sea captain"
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Advisor created successfully",
+  "data": {
+    "counselor_id": 123,
+    "persona": {
+      "spec": "persona_profile_v1",
+      "spec_version": "1.0",
+      "data": {
+        "name": "Captain Wisdom",
+        "who_you_are": "A grizzled sea captain...",
+        "your_vibe": "Gruff but caring...",
+        "your_worldview": "...",
+        "session_template": "...",
+        "session_examples": [...],
+        "tags": ["wisdom", "maritime"],
+        "visuals": {...},
+        "crisis_protocol": "...",
+        "hotlines": [...]
+      }
+    }
+  }
+}
+```
+
+### List Custom Advisors
+```bash
+curl "http://localhost:8000/api/v1/counselors/custom/list/1"
+```
+
+**Response:**
+```json
+[
+  {
+    "id": 123,
+    "entity_id": "counselor_...",
+    "name": "Captain Wisdom",
+    "specialization": "Life advice with maritime metaphors",
+    "therapeutic_style": "Gruff but caring old sea captain",
+    "credentials": "Help",
+    "profile": {...},
+    "tags": ["wisdom", "maritime"],
+    "created_at": "2026-02-12T10:30:00",
+    "updated_at": "2026-02-12T10:30:00"
+  }
+]
+```
+
+### Delete Custom Advisor
+```bash
+curl -X DELETE "http://localhost:8000/api/v1/counselors/custom/delete" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "counselor_id": 123,
+    "client_id": 1
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Advisor deleted successfully"
+}
+```
+
+---
+
 ## Farm API (Optional)
 
 ### Get Game State

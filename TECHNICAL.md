@@ -366,6 +366,48 @@ Guide Flow: Chat → "Create Cards" button → GuideScreen → Card Suggestion �
 
 ---
 
+### Custom Advisors ✅
+
+**Status**: Complete (2026-02-12)
+**Tests**: 19/19 passing
+
+**Custom Advisors System**:
+- Users can create up to 5 custom AI counselors
+- 3-question creation flow (name, specialty, vibe)
+- LLM generates complete persona from brief description
+- Stored in counselor_profiles with is_custom flag
+- Full CRUD operations via API
+- Soft-delete (preserves session history)
+
+**Database Schema**:
+- Migration 008 added columns to counselor_profiles:
+  - `client_id` - Links custom advisor to creating client (NULL for system personas)
+  - `is_custom` - Flag to distinguish user-created vs system personas
+  - `image_url` - Future use for generated avatar images
+  - `last_image_regenerated` - Future use for daily regeneration cooldown
+- Performance metrics table for tracking advisor generation performance
+
+**AdvisorGenerator Service** (`backend/app/services/advisor_generator.py`):
+- LLM-based 3-question → complete persona expansion
+- Generates full persona_profile_v1 JSON structure
+- Includes who_you_are, your_vibe, your_worldview, session_template
+- Session examples (2) and crisis protocol
+- 3 retry attempts with exponential backoff
+- Logs performance metrics to database
+
+**API Endpoints** (`/api/v1/counselors/custom/`):
+- `POST /create` - Generate and save advisor (validates 5-advisor limit)
+- `GET /list/{client_id}` - List user's custom advisors
+- `PUT /update` - Update advisor persona (custom only)
+- `DELETE /delete` - Soft-delete advisor (confirmation required)
+
+**Frontend Implementation**:
+- AdvisorCreatorScreen - 3-step form with real-time validation
+- CounselorSelection - "+" button for creator, scrollable grid
+- CardInventoryModal - "Advisor" tab for viewing and deleting
+
+---
+
 ## Card System
 
 ### Three Card Types

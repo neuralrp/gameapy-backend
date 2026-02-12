@@ -35,10 +35,10 @@ class TestE2EMultiSessionTracking:
     """Test multi-session entity tracking."""
 
     @pytest.mark.e2e
-    def test_multi_session_entity_tracking(self, test_client, sample_client, sample_counselor, mock_llm_success):
+    def test_multi_session_entity_tracking(self, test_client_with_auth, sample_user, sample_counselor, mock_llm_success):
         """Multiple sessions mentioning 'Mom' → verify mention count increases."""
         card_id = db.create_character_card(
-            client_id=sample_client,
+            client_id=sample_user,
             card_name="Mom",
             relationship_type="family",
             card_data={"name": "Mom", "relationship_type": "family"}
@@ -47,12 +47,12 @@ class TestE2EMultiSessionTracking:
         session_ids = []
         for i in range(3):
             session_id = db.create_session(
-                client_id=sample_client,
+                client_id=sample_user,
                 counselor_id=sample_counselor
             )
             session_ids.append(session_id)
 
-            test_client.post(
+            test_client_with_auth.post(
                 f"/api/v1/chat/chat",
                 json={
                     "session_id": session_id,
@@ -76,21 +76,21 @@ class TestE2ESearchEditCard:
     """Test search and edit card flow."""
 
     @pytest.mark.e2e
-    def test_search_and_edit_card_flow(self, test_client, sample_client, mock_llm_success):
+    def test_search_and_edit_card_flow(self, test_client_with_auth, sample_user, mock_llm_success):
         """Search cards → find character → update details → save."""
         card_id = db.create_character_card(
-            client_id=sample_client,
+            client_id=sample_user,
             card_name="Test Person",
             relationship_type="friend",
             card_data={"name": "Test Person", "relationship_type": "friend"}
         )
         
-        search_response = test_client.get("/api/v1/cards/search?q=test&types=character")
+        search_response = test_client_with_auth.get("/api/v1/cards/search?q=test&types=character")
         assert search_response.status_code == 200
         search_data = search_response.json()
         assert len(search_data['data']['items']) > 0
         
-        update_response = test_client.put(
+        update_response = test_client_with_auth.put(
             f"/api/v1/cards/{card_id}",
             json={
                 "card_type": "character",
@@ -99,7 +99,7 @@ class TestE2ESearchEditCard:
         )
         assert update_response.status_code == 200
         
-        char_cards = db.get_character_cards(sample_client)
+        char_cards = db.get_character_cards(sample_user)
         assert char_cards[0]['card_name'] == "Updated Name"
 
 
@@ -108,20 +108,22 @@ class TestE2EFarmDiscovery:
     """Test farm discovery flow (optional feature)."""
 
     @pytest.mark.e2e
-    def test_farm_discovery_flow(self, test_client, sample_client, sample_counselor, mock_llm_success):
+    def test_farm_discovery_flow(self, test_client_with_auth, sample_user, sample_counselor, mock_llm_success):
         """5+ sessions → farm suggestion → discover endpoints (optional)."""
         session_ids = []
         for i in range(5):
             session_id = db.create_session(
-                client_id=sample_client,
+                client_id=sample_user,
                 counselor_id=sample_counselor
             )
             session_ids.append(session_id)
             
-            test_client.post(
+            test_client_with_auth.post(
                 f"/api/v1/chat/chat",
-                params={"session_id": session_id},
-                json={"role": "user", "content": "Chat message"}
+                json={
+                    "session_id": session_id,
+                    "message_data": {"role": "user", "content": "Chat message"}
+                }
             )
         
         assert len(session_ids) == 5

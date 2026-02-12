@@ -17,6 +17,7 @@ class TestDatabaseCardCRUD:
     @pytest.mark.integration
     def test_create_self_card_success(self, sample_client):
         """Create self card and verify ID returned."""
+        from app.db.database import db
         card_data = {
             "spec": "gameapy_self_card_v1",
             "data": {
@@ -140,7 +141,7 @@ class TestDatabaseCardCRUD:
         
         assert success is True
         card = db.get_self_card_by_id(card_id)
-        card_json = json.loads(card['card_json'])
+        card_json = card['card_json'] if isinstance(card['card_json'], dict) else json.loads(card['card_json'])
         assert card_json['data']['personality'] == "New"
 
     @pytest.mark.integration
@@ -298,8 +299,9 @@ class TestDatabaseEntityMentions:
         )
         
         with db._get_connection() as conn:
-            cursor = conn.execute(
-                "SELECT * FROM entity_mentions WHERE session_id = ?",
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM entity_mentions WHERE session_id = %s",
                 (sample_session,)
             )
             mentions = [dict(row) for row in cursor.fetchall()]
@@ -410,13 +412,13 @@ class TestDatabaseConstraints:
 
     @pytest.mark.integration
     def test_foreign_key_violation_nonexistent_client(self, sample_counselor):
-        """Session creation succeeds even with invalid client_id (SQLite default no FK enforcement)."""
-        session_id = db.create_session(
-            client_id=99999,
-            counselor_id=sample_counselor
-        )
-        assert session_id is not None
-        assert session_id > 0
+        """Session creation fails with invalid client_id (PostgreSQL enforces FKs)."""
+        import psycopg2
+        with pytest.raises(psycopg2.errors.ForeignKeyViolation):
+            db.create_session(
+                client_id=99999,
+                counselor_id=sample_counselor
+            )
 
     @pytest.mark.integration
     def test_invalid_card_type_rejected(self):

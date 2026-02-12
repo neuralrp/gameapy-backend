@@ -1,21 +1,22 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
 from app.models.schemas import (
-    ClientProfile, ClientProfileCreate, APIResponse,
+    ClientProfile, APIResponse,
     CounselorProfile, CounselorProfileCreate,
-    Session, SessionCreate, Message, MessageCreate, SessionWithMessages,
+    Session, SessionCreate, Message, MessageCreate,
     CharacterCard, CharacterCardCreate,
     GameState, FarmItem, FarmItemCreate, FarmShopResponse,
     ShopItem, HealthResponse
 )
 from app.db.database import db
+from app.auth import get_current_user
 from datetime import datetime
 import json
 
 router = APIRouter()
 
 
-# Health Check
+# Health Check (public)
 @router.get("/health", response_model=HealthResponse)
 async def health_check():
     return HealthResponse(
@@ -25,43 +26,19 @@ async def health_check():
 
 
 # Client Profile Routes
-@router.post("/clients", response_model=APIResponse)
-async def create_client(client_data: ClientProfileCreate):
-    """Create a new client profile with recovery code."""
-    try:
-        profile_data = {
-            "spec": "client_profile_v1",
-            "spec_version": "1.0",
-            "data": client_data.dict()
-        }
-        
-        client_id, recovery_code = db.create_client_profile(profile_data)
-        
-        return APIResponse(
-            success=True,
-            message="Client profile created successfully",
-            data={
-                "client_id": client_id,
-                "recovery_code": recovery_code
-            }
-        )
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.get("/clients/{client_id}", response_model=ClientProfile)
-async def get_client(client_id: int):
-    """Get client profile by ID."""
-    client = db.get_client_profile(client_id)
+@router.get("/clients/me", response_model=ClientProfile)
+async def get_current_client(current_user: dict = Depends(get_current_user)):
+    """Get current authenticated user's profile."""
+    client = db.get_client_profile(current_user["id"])
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
     return client
 
 
-# Counselor Profile Routes
+# Counselor Profile Routes (public list, no auth required for browsing)
 @router.post("/counselors", response_model=APIResponse)
 async def create_counselor(counselor_data: CounselorProfileCreate):
-    """Create a new counselor profile."""
+    """Create a new counselor profile (admin only in future)."""
     try:
         profile_data = {
             "spec": "counselor_profile_v1",
@@ -81,14 +58,27 @@ async def create_counselor(counselor_data: CounselorProfileCreate):
 
 
 @router.get("/counselors", response_model=List[CounselorProfile])
-async def get_all_counselors():
-    """Get all active counselor profiles."""
-    return db.get_all_counselors()
+async def get_all_counselors(current_user: dict = Depends(get_current_user)):
+    """
+    Get all active counselors (system personas + user's custom advisors).
+    Requires authentication.
+    """
+    try:
+        client_id = current_user["id"]
+        counselors = db.get_all_counselors_including_custom(client_id)
+        return counselors
+    except Exception as e:
+        import logging
+        logging.exception("Error retrieving counselors")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to retrieve counselors"
+        )
 
 
 @router.get("/counselors/{counselor_id}", response_model=CounselorProfile)
 async def get_counselor(counselor_id: int):
-    """Get counselor profile by ID."""
+    """Get counselor profile by ID (public)."""
     counselor = db.get_counselor_profile(counselor_id)
     if not counselor:
         raise HTTPException(status_code=404, detail="Counselor not found")
@@ -97,10 +87,14 @@ async def get_counselor(counselor_id: int):
 
 # Session Routes
 @router.post("/sessions", response_model=APIResponse)
-async def create_session(session_data: SessionCreate):
+async def create_session(
+    session_data: SessionCreate,
+    current_user: dict = Depends(get_current_user)
+):
     """Create a new counseling session."""
     try:
-        session_id = db.create_session(session_data.client_id, session_data.counselor_id)
+        client_id = current_user["id"]
+        session_id = db.create_session(client_id, session_data.counselor_id)
         
         return APIResponse(
             success=True,
@@ -112,7 +106,11 @@ async def create_session(session_data: SessionCreate):
 
 
 @router.post("/sessions/{session_id}/messages", response_model=APIResponse)
-async def add_message(session_id: int, message_data: MessageCreate):
+async def add_message(
+    session_id: int,
+    message_data: MessageCreate,
+    current_user: dict = Depends(get_current_user)
+):
     """Add a message to a session."""
     try:
         message_id = db.add_message(
@@ -132,7 +130,11 @@ async def add_message(session_id: int, message_data: MessageCreate):
 
 
 @router.get("/sessions/{session_id}/messages", response_model=List[Message])
-async def get_session_messages(session_id: int, limit: int = 50):
+async def get_session_messages(
+    session_id: int,
+    limit: int = 50,
+    current_user: dict = Depends(get_current_user)
+):
     """Get messages from a session."""
     try:
         return db.get_session_messages(session_id, limit)
@@ -141,10 +143,14 @@ async def get_session_messages(session_id: int, limit: int = 50):
 
 
 # Character Card Routes
-@router.post("/clients/{client_id}/character-cards", response_model=APIResponse)
-async def create_character_card(client_id: int, card_data: CharacterCardCreate):
+@router.post("/character-cards", response_model=APIResponse)
+async def create_character_card(
+    card_data: CharacterCardCreate,
+    current_user: dict = Depends(get_current_user)
+):
     """Create a new character card."""
     try:
+        client_id = current_user["id"]
         card_id = db.create_character_card(
             client_id=client_id,
             card_name=card_data.card_name,
@@ -161,26 +167,33 @@ async def create_character_card(client_id: int, card_data: CharacterCardCreate):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/clients/{client_id}/character-cards", response_model=List[CharacterCard])
-async def get_character_cards(client_id: int):
-    """Get all character cards for a client."""
+@router.get("/character-cards", response_model=List[CharacterCard])
+async def get_character_cards(current_user: dict = Depends(get_current_user)):
+    """Get all character cards for current user."""
+    client_id = current_user["id"]
     return db.get_character_cards(client_id)
 
 
 # Game State Routes
-@router.get("/clients/{client_id}/game-state", response_model=GameState)
-async def get_game_state(client_id: int):
-    """Get game state for a client."""
+@router.get("/game-state", response_model=GameState)
+async def get_game_state(current_user: dict = Depends(get_current_user)):
+    """Get game state for current user."""
+    client_id = current_user["id"]
     game_state = db.get_game_state(client_id)
     if not game_state:
         raise HTTPException(status_code=404, detail="Game state not found")
     return game_state
 
 
-@router.post("/clients/{client_id}/game-state/award-coins", response_model=APIResponse)
-async def award_coins(client_id: int, coins: int, reason: str = "session_completion"):
-    """Award gold coins to a client."""
+@router.post("/game-state/award-coins", response_model=APIResponse)
+async def award_coins(
+    coins: int,
+    reason: str = "session_completion",
+    current_user: dict = Depends(get_current_user)
+):
+    """Award gold coins to current user."""
     try:
+        client_id = current_user["id"]
         success = db.update_gold_coins(client_id, coins, reason)
         if not success:
             raise HTTPException(status_code=404, detail="Client not found")
@@ -195,16 +208,21 @@ async def award_coins(client_id: int, coins: int, reason: str = "session_complet
 
 
 # Farm Routes
-@router.get("/clients/{client_id}/farm-items", response_model=List[FarmItem])
-async def get_farm_items(client_id: int):
-    """Get all farm items for a client."""
+@router.get("/farm-items", response_model=List[FarmItem])
+async def get_farm_items(current_user: dict = Depends(get_current_user)):
+    """Get all farm items for current user."""
+    client_id = current_user["id"]
     return db.get_farm_items(client_id)
 
 
-@router.post("/clients/{client_id}/farm-items", response_model=APIResponse)
-async def add_farm_item(client_id: int, item_data: FarmItemCreate):
+@router.post("/farm-items", response_model=APIResponse)
+async def add_farm_item(
+    item_data: FarmItemCreate,
+    current_user: dict = Depends(get_current_user)
+):
     """Add a new farm item."""
     try:
+        client_id = current_user["id"]
         item_id = db.add_farm_item(
             client_id=client_id,
             item_type=item_data.item_type,
@@ -221,9 +239,10 @@ async def add_farm_item(client_id: int, item_data: FarmItemCreate):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/clients/{client_id}/farm-shop", response_model=FarmShopResponse)
-async def get_farm_shop(client_id: int):
+@router.get("/farm-shop", response_model=FarmShopResponse)
+async def get_farm_shop(current_user: dict = Depends(get_current_user)):
     """Get farm shop items and player gold."""
+    client_id = current_user["id"]
     game_state = db.get_game_state(client_id)
     if not game_state:
         raise HTTPException(status_code=404, detail="Client not found")
@@ -265,14 +284,14 @@ async def get_farm_shop(client_id: int):
 # Phase 3: Unified Card Management Endpoints
 # ============================================================
 
-@router.get("/clients/{client_id}/cards", response_model=APIResponse)
+@router.get("/cards", response_model=APIResponse)
 async def get_all_cards(
-    client_id: int,
     page: int = Query(1, ge=1),
-    page_size: str = Query("20")
+    page_size: str = Query("20"),
+    current_user: dict = Depends(get_current_user)
 ) -> APIResponse:
     """
-    Get all cards for a client (paginated).
+    Get all cards for current user (paginated).
 
     Query Params:
     - page: Page number (default: 1)
@@ -281,6 +300,7 @@ async def get_all_cards(
     Returns unified response with self, character, and world cards.
     """
     try:
+        client_id = current_user["id"]
         is_all = page_size.lower() == "all"
         limit = None if is_all else int(page_size)
         offset = 0 if is_all else (page - 1) * int(page_size)

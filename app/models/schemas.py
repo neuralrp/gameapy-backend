@@ -93,6 +93,7 @@ class CounselorProfile(BaseModelResponse):
     credentials: Optional[str]
     profile: CounselorProfileData
     tags: List[str]
+    is_custom: Optional[bool] = False
 
 
 # Session Models
@@ -315,7 +316,6 @@ class CardGenerateResponse(BaseModel):
 
 
 class CardSaveRequest(BaseModel):
-    client_id: int
     card_type: str
     card_data: Dict[str, Any]
 

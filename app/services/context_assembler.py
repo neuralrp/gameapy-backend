@@ -87,7 +87,8 @@ class ContextAssembler:
     
     def _format_self_card(self, self_card: Dict) -> Dict:
         """Format self card for context."""
-        payload = json.loads(self_card['card_json'])
+        card_json = self_card['card_json']
+        payload = json.loads(card_json) if isinstance(card_json, str) else card_json
         normalized_payload = db.normalize_self_card_payload(payload)
         return {
             'id': self_card['id'],
@@ -203,10 +204,12 @@ class ContextAssembler:
             if card_type == 'self':
                 card = db.get_self_card_by_id(card_id)
                 if card:
+                    card_json = card['card_json']
+                    payload = json.loads(card_json) if isinstance(card_json, str) else card_json
                     return {
                         'id': card['id'],
                         'card_type': 'self',
-                        'payload': json.loads(card['card_json']),
+                        'payload': payload,
                         'auto_update_enabled': card.get('auto_update_enabled', True),
                         'is_pinned': card.get('is_pinned', False)
                     }
@@ -230,13 +233,15 @@ class ContextAssembler:
                 events = db.get_world_events(client_id)
                 for event in events:
                     if event['id'] == card_id:
+                        key_array = event['key_array']
+                        parsed_key_array = json.loads(key_array) if isinstance(key_array, str) else key_array
                         return {
                             'id': event['id'],
                             'card_type': 'world',
                             'payload': {
                                 'title': event['title'],
                                 'description': event['description'],
-                                'key_array': json.loads(event['key_array']),
+                                'key_array': parsed_key_array,
                                 'event_type': event['event_type'],
                                 'resolved': event.get('resolved', False)
                             },

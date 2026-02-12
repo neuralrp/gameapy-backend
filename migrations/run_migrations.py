@@ -7,14 +7,14 @@ Runs all pending migrations in order on startup.
 import os
 import sys
 import logging
-import sqlite3
+import psycopg2
+import psycopg2.extras
 from pathlib import Path
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db.database import Database
-from migrations.migration_tracker import initialize_tracker, is_migration_applied, record_migration
+from app.core.config import settings
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -51,110 +51,145 @@ MIGRATIONS = [
         "name": "add_recovery_code",
         "module": "migrations.007_add_recovery_code",
         "function": "migrate"
+    },
+    {
+        "id": "008",
+        "name": "add_custom_advisors",
+        "module": "migrations.008_add_custom_advisors",
+        "function": "upgrade"
     }
 ]
 
 
-def run_migration(db_path: str, migration_id: str, migration_name: str, module_path: str, function_name: str):
-    """Run a single migration with explicit db_path."""
+def run_migration(database_url: str, migration_id: str, migration_name: str, module_path: str, function_name: str):
+    """Run a single migration with explicit database_url."""
     logger.info(f"[MIGRATION {migration_id}] Starting: {migration_name}")
-    
+
     try:
-        # Import the migration module
+        # Import migration module
         module = __import__(module_path, fromlist=[function_name])
         migration_func = getattr(module, function_name)
-        
-        # Run the migration with db_path parameter
-        migration_func(db_path)
-        
-        # Record successful migration with retry for database lock
-        import time
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                record_migration(db_path, migration_id, migration_name)
-                break
-            except sqlite3.OperationalError as e:
-                if "database is locked" in str(e) and attempt < max_retries - 1:
-                    logger.warning(f"[MIGRATION {migration_id}] Database locked, retrying ({attempt + 1}/{max_retries})...")
-                    time.sleep(0.5)
-                else:
-                    raise
-            except sqlite3.IntegrityError:
-                # Migration already recorded, ignore
-                logger.debug(f"[MIGRATION {migration_id}] Already recorded in migration history")
-                break
-        
+
+        # Run migration with database_url parameter
+        migration_func(database_url)
+
+        # Record successful migration
+        _record_migration(database_url, migration_id, migration_name)
+
         logger.info(f"[MIGRATION {migration_id}] Completed successfully")
-        
+
     except Exception as e:
         logger.error(f"[MIGRATION {migration_id}] Failed: {e}")
         raise
 
 
+def _initialize_tracker(database_url: str):
+    """Initialize the migrations table."""
+    conn = psycopg2.connect(database_url)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS _migrations (
+            id SERIAL PRIMARY KEY,
+            migration_id TEXT UNIQUE NOT NULL,
+            migration_name TEXT NOT NULL,
+            applied_at TIMESTAMPTZ DEFAULT NOW()
+        )
+    """)
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
+def _is_migration_applied(database_url: str, migration_id: str) -> bool:
+    """Check if a migration has been applied."""
+    conn = psycopg2.connect(database_url)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT 1 FROM _migrations WHERE migration_id = %s",
+        (migration_id,)
+    )
+    result = cursor.fetchone()
+
+    cursor.close()
+    conn.close()
+
+    return result is not None
+
+
+def _record_migration(database_url: str, migration_id: str, migration_name: str):
+    """Record a migration as applied."""
+    conn = psycopg2.connect(database_url)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "INSERT INTO _migrations (migration_id, migration_name) VALUES (%s, %s)",
+            (migration_id, migration_name)
+        )
+        conn.commit()
+    except psycopg2.IntegrityError:
+        # Migration already recorded, ignore
+        logger.debug(f"[MIGRATION {migration_id}] Already recorded in migration history")
+    finally:
+        cursor.close()
+        conn.close()
+
+
 def run_all_migrations():
-    """Run all pending migrations in order. Returns db_path for use by subsequent initialization."""
+    """Run all pending migrations in order."""
     logger.info("=" * 60)
     logger.info("Starting automatic migration runner")
     logger.info("=" * 60)
-    
-    # Determine database path using same logic as Database class
-    from app.core.config import settings
-    db_path = settings.database_path or "gameapy.db"
-    
-    # Ensure database directory exists
-    db_dir = os.path.dirname(db_path)
-    if db_dir and not os.path.exists(db_dir):
-        os.makedirs(db_dir, exist_ok=True)
-        logger.info(f"Created database directory: {db_dir}")
-    
-    logger.info(f"Database path: {db_path}")
-    
+
+    database_url = settings.database_url
+    logger.info(f"Database URL: {database_url}")
+
     # Initialize migration tracker
-    initialize_tracker(db_path)
+    _initialize_tracker(database_url)
     logger.info("Migration tracker initialized")
-    
+
     # Run each migration if not already applied
     pending_migrations = []
     completed_migrations = []
-    
+
     for migration in MIGRATIONS:
         migration_id = migration["id"]
         migration_name = migration["name"]
-        
-        if is_migration_applied(db_path, migration_id):
+
+        if _is_migration_applied(database_url, migration_id):
             logger.info(f"[SKIP] Migration {migration_id} ({migration_name}) already applied")
             completed_migrations.append(migration_id)
         else:
             logger.info(f"[PENDING] Migration {migration_id} ({migration_name}) needs to be applied")
             pending_migrations.append(migration)
-    
+
     # Run pending migrations
     if not pending_migrations:
         logger.info("=" * 60)
         logger.info("All migrations are up to date!")
         logger.info(f"Applied: {', '.join(completed_migrations)}")
         logger.info("=" * 60)
-        return db_path
-    
+        return
+
     logger.info(f"Found {len(pending_migrations)} pending migration(s)")
     logger.info("-" * 60)
-    
+
     for migration in pending_migrations:
         run_migration(
-            db_path,
+            database_url,
             migration["id"],
             migration["name"],
             migration["module"],
             migration["function"]
         )
         logger.info("-" * 60)
-    
+
     logger.info("=" * 60)
     logger.info("All migrations completed successfully!")
     logger.info("=" * 60)
-    
-    return db_path
 
 
 if __name__ == "__main__":

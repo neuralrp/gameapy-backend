@@ -4,11 +4,7 @@ import json
 import asyncio
 
 from app.models.schemas import (
-    ClientProfile, CounselorProfile, Message, MessageCreate,
-    SessionCreate, SessionWithMessages, APIResponse, ChatRequest,
-    CharacterCard, CharacterCardCreate,
-    GameState, FarmItem, FarmItemCreate, FarmShopResponse,
-    ShopItem, HealthResponse
+    MessageCreate, APIResponse, ChatRequest
 )
 from app.db.database import db
 from app.services.simple_llm_fixed import simple_llm_client
@@ -18,6 +14,7 @@ from app.services.context_assembler import context_assembler
 from app.core.config import settings
 from app.config.core_truths import get_core_truths
 from app.utils.card_metadata import CardMetadata
+from app.auth import get_current_user
 
 router = APIRouter()
 
@@ -51,7 +48,6 @@ def _format_self_card_prose(card: Dict) -> str:
     """Format self card as human-readable prose with recency indicators."""
     payload = card.get('payload', {})
     
-    # Get metadata for recency indicators
     metadata = CardMetadata(payload) if '_metadata' in payload else None
     
     parts = ["## About This User"]
@@ -105,7 +101,6 @@ def _format_card_prose(card: Dict) -> str:
     card_type = card.get('card_type', '')
     payload = card.get('payload', {})
     
-    # Get metadata for recency indicators
     metadata = CardMetadata(payload) if '_metadata' in payload else None
     
     if card_type == 'character':
@@ -189,11 +184,9 @@ def _format_counselor_examples(examples: List[Dict]) -> str:
 
 def _build_counselor_system_prompt(counselor_data: Dict) -> str:
     """Build system prompt from counselor profile data."""
-    # Start with universal core truths
     prompt = get_core_truths()
     prompt += "\n\n---\n\n"
     
-    # Add persona-specific identity
     name = counselor_data['name']
     who_you_are = counselor_data.get('who_you_are', '')
     your_vibe = counselor_data.get('your_vibe', '')
@@ -226,22 +219,26 @@ def _build_counselor_system_prompt(counselor_data: Dict) -> str:
 
 
 @router.post("/chat")
-async def chat_with_counselor(request: ChatRequest):
+async def chat_with_counselor(
+    request: ChatRequest,
+    current_user: dict = Depends(get_current_user)
+):
     """
     Stream chat response from counselor.
+    Uses authenticated user's ID from JWT.
     """
     try:
+        client_id = current_user["id"]
         session_id = request.session_id
         message_data = request.message_data
         
-        # Get session details first
         session = db.get_session(session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        client_id = session['client_id']
+        if session['client_id'] != client_id:
+            raise HTTPException(status_code=403, detail="Access denied to this session")
         
-        # Add user message to session
         user_message_id = db.add_message(
             session_id=session_id,
             role=message_data.role,
@@ -249,7 +246,6 @@ async def chat_with_counselor(request: ChatRequest):
             speaker="client"
         )
         
-        # 1. Detect and log entity mentions
         mentions = entity_detector.detect_mentions(message_data.content, client_id)
         for mention in mentions:
             db.add_entity_mention(
@@ -260,7 +256,6 @@ async def chat_with_counselor(request: ChatRequest):
                 mention_context=message_data.content
             )
         
-        # 2. Get counselor profile from session
         counselor_id = session.get('counselor_id')
         if not counselor_id:
             raise HTTPException(status_code=400, detail="Session has no counselor assigned")
@@ -271,7 +266,6 @@ async def chat_with_counselor(request: ChatRequest):
         
         counselor_data = counselor['profile']['data']
         
-        # Easter Egg: "Summon Deirdre" (case-insensitive)
         counselor_switched = False
         new_counselor_data = None
         if message_data.content.lower().strip() == "summon deirdre" and counselor_data['name'].lower() == "marina":
@@ -284,28 +278,22 @@ async def chat_with_counselor(request: ChatRequest):
                 counselor_id = deirdre_counselor['id']
                 counselor_data = new_counselor_data
         
-        # 3. Assemble context for LLM
         context = context_assembler.assemble_context(
             client_id=client_id,
             session_id=session_id,
             user_message=message_data.content
         )
         
-        # 4. Get session messages for conversation history
         session_messages = db.get_session_messages(session_id, limit=10)
         
-        # 5. Format context for LLM
         context_str = _format_context_for_llm(context)
         
-        # 6. Build system prompt from counselor data
         system_prompt_content = _build_counselor_system_prompt(counselor_data)
         
-        # Add context as system message
         llm_messages = [
             {"role": "system", "content": f"{system_prompt_content}\n\n---\n\nContext about this user:\n{context_str}"}
         ]
         
-        # Convert DB messages to LLM format
         for msg in session_messages:
             role = "assistant" if msg['speaker'] == 'counselor' else "user"
             llm_messages.append({
@@ -320,7 +308,6 @@ async def chat_with_counselor(request: ChatRequest):
             full_response = ""
             
             try:
-                # Stream LLM response
                 async for chunk in simple_llm_client.chat_completion_stream(
                     messages=llm_messages,
                     temperature=0.7,
@@ -330,10 +317,8 @@ async def chat_with_counselor(request: ChatRequest):
                     content = delta.get("content", "")
                     if content:
                         full_response += content
-                        # Send content chunk
                         yield f"data: {json.dumps({'type': 'content', 'content': content})}\n\n"
                 
-                # Store full response in database
                 ai_message_id = None
                 if full_response:
                     ai_message_id = db.add_message(
@@ -343,7 +328,6 @@ async def chat_with_counselor(request: ChatRequest):
                         speaker="counselor"
                     )
                 
-                # Send final metadata chunk
                 metadata = {
                     'type': 'done',
                     'data': {
@@ -354,7 +338,6 @@ async def chat_with_counselor(request: ChatRequest):
                 }
                 yield f"data: {json.dumps(metadata)}\n\n"
             except Exception as e:
-                # Send error as final chunk
                 yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
         
         return StreamingResponse(
@@ -371,16 +354,22 @@ async def chat_with_counselor(request: ChatRequest):
 @router.post("/insights/extract", response_model=APIResponse)
 async def extract_insights(
     session_id: int,
-    dimensions: List[str] = ["engagement", "mood", "insight"]
+    dimensions: List[str] = ["engagement", "mood", "insight"],
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Extract insights from a counseling session.
     """
     try:
-        # Get session details
+        session = db.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        if session['client_id'] != current_user["id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
         session_messages = db.get_session_messages(session_id)
         
-        # Get client profile (simplified)
         client_profile = {
             "spec": "client_profile_v1",
             "data": {
@@ -393,7 +382,6 @@ async def extract_insights(
             }
         }
         
-        # Extract insights
         insights = await insight_extractor.extract_session_insights(
             messages=session_messages,
             client_profile=client_profile,
@@ -418,7 +406,6 @@ async def extract_insights(
 async def get_available_models():
     """Get list of available LLM models from OpenRouter."""
     try:
-        # Return predefined models for now
         models = [
             {"id": "anthropic/claude-3-haiku", "name": "Claude 3 Haiku"},
             {"id": "openai/gpt-3.5-turbo", "name": "GPT-3.5 Turbo"},
@@ -439,7 +426,6 @@ async def get_available_models():
 async def get_model_info(model_id: str):
     """Get information about a specific model."""
     try:
-        # Return predefined model info
         model_configs = {
             "anthropic/claude-3-haiku": {
                 "name": "Claude 3 Haiku",
