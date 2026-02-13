@@ -29,21 +29,9 @@ MIGRATIONS = [
         "function": "run_migration"
     },
     {
-        "id": "009",
-        "name": "farm_tables",
-        "module": "migrations.009_farm_tables",
-        "function": "run_migration"
-    },
-    {
-        "id": "010",
-        "name": "farm_till_water",
-        "module": "migrations.010_farm_till_water",
-        "function": "run_migration"
-    },
-    {
-        "id": "011",
-        "name": "watered_stages",
-        "module": "migrations.011_watered_stages",
+        "id": "012",
+        "name": "farm_consolidated",
+        "module": "migrations.012_farm_consolidated",
         "function": "run_migration"
     }
 ]
