@@ -21,7 +21,7 @@ class CardUpdater:
 
     def __init__(self):
         self.default_model = settings.default_model or "anthropic/claude-3-haiku"
-        self.batch_confidence_threshold = 0.5
+        self.batch_confidence_threshold = 0.3
         self.field_confidence_threshold = 0.7
 
     async def analyze_and_update(
@@ -374,18 +374,8 @@ Do not include any text outside of JSON."""
         return field_confidence >= self.field_confidence_threshold
 
     def _should_skip_card(self, card_type: str, card_id: int) -> bool:
-        """Check if card should be skipped (user edited or auto-update disabled)."""
-        if not self._get_auto_update_enabled(card_type, card_id):
-            return True
-
-        last_ai_update = db.get_last_ai_update(card_type, card_id)
-        user_edit = db.get_recent_user_edit(
-            entity_type=f"{card_type}_card",
-            entity_id=card_id,
-            since_timestamp=last_ai_update
-        )
-
-        return user_edit is not None
+        """Check if card should be skipped (auto-update disabled)."""
+        return not self._get_auto_update_enabled(card_type, card_id)
 
     def _get_auto_update_enabled(self, card_type: str, card_id: int) -> Optional[bool]:
         """Get current auto_update_enabled value for a card."""
