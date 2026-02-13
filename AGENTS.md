@@ -349,7 +349,7 @@ response = await simple_llm_client.chat_completion(
 | `backend/scripts/seed_personas.py` | Persona JSON → DB sync script (supports is_hidden) |
 | `backend/migrations/005_add_hidden_flag.py` | Add is_hidden column for Easter egg counselors |
 | `backend/migrations/008_add_custom_advisors.py` | Custom advisors support (client_id, is_custom, performance_metrics) |
-| `backend/migrations/009_farm_tables.py` | Farm tables (crops, plantings, harvests) |
+| `backend/migrations/012_farm_consolidated.py` | Farm tables (planted_crops with watered_stages, growth_stage) + farm_plots, animals, decorations |
  | `backend/schema.sql` | Database schema |
  | `backend/pytest.ini` | Pytest configuration (asyncio, markers, test discovery, coverage) |
  | `backend/railway.json` | Railway configuration (volume mount path, deployment settings) |
