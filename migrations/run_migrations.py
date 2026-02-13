@@ -27,6 +27,12 @@ MIGRATIONS = [
         "name": "initial_schema",
         "module": "migrations.001_initial_schema",
         "function": "run_migration"
+    },
+    {
+        "id": "009",
+        "name": "farm_tables",
+        "module": "migrations.009_farm_tables",
+        "function": "run_migration"
     }
 ]
 

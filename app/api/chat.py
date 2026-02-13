@@ -246,6 +246,8 @@ async def chat_with_counselor(
             speaker="client"
         )
         
+        db.increment_message_counter(client_id)
+        
         mentions = entity_detector.detect_mentions(message_data.content, client_id)
         for mention in mentions:
             db.add_entity_mention(

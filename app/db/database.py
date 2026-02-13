@@ -1117,6 +1117,576 @@ class Database:
 
             return item_id
 
+    # ============================================================
+    # Farm Minigame Methods (Message-based growth)
+    # ============================================================
+
+    def initialize_farm(self, client_id: int) -> None:
+        """Initialize farm for a new client with starting gold."""
+        import datetime
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            # Check if game_state exists
+            cursor.execute("SELECT id FROM game_state WHERE client_id = %s", (client_id,))
+            if not cursor.fetchone():
+                cursor.execute(
+                    """INSERT INTO game_state (client_id, gold_coins, farm_level, message_counter, last_login_date)
+                       VALUES (%s, %s, %s, %s, %s)""",
+                    (client_id, 15, 1, 0, datetime.date.today())
+                )
+
+    def increment_message_counter(self, client_id: int) -> int:
+        """Increment message counter and return new value."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """UPDATE game_state SET message_counter = message_counter + 1 
+                   WHERE client_id = %s RETURNING message_counter""",
+                (client_id,)
+            )
+            result = cursor.fetchone()
+            return result['message_counter'] if result else 0
+
+    def get_message_counter(self, client_id: int) -> int:
+        """Get current message counter."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT message_counter FROM game_state WHERE client_id = %s",
+                (client_id,)
+            )
+            result = cursor.fetchone()
+            return result['message_counter'] if result else 0
+
+    def claim_daily_login(self, client_id: int) -> Tuple[bool, str]:
+        """Claim daily login bonus. Returns (success, message)."""
+        import datetime
+        today = datetime.date.today()
+        
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT last_login_date, gold_coins FROM game_state WHERE client_id = %s",
+                (client_id,)
+            )
+            row = cursor.fetchone()
+            
+            if not row:
+                return False, "Game state not found"
+            
+            last_login = row['last_login_date']
+            
+            if last_login == today:
+                return False, "Already claimed today"
+            
+            # Award 5 gold
+            new_gold = row['gold_coins'] + 5
+            cursor.execute(
+                "UPDATE game_state SET gold_coins = %s, last_login_date = %s WHERE client_id = %s",
+                (new_gold, today, client_id)
+            )
+            
+            return True, "Claimed 5 gold"
+
+    def get_farm_status(self, client_id: int) -> Dict:
+        """Get complete farm status."""
+        from app.config.game_constants import FARM_LEVELS, CROPS, ANIMALS
+        
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get game state
+            cursor.execute(
+                "SELECT gold_coins, farm_level, message_counter FROM game_state WHERE client_id = %s",
+                (client_id,)
+            )
+            game_state = cursor.fetchone()
+            
+            if not game_state:
+                return {"error": "Game state not found"}
+            
+            farm_level = game_state['farm_level']
+            level_data = FARM_LEVELS.get(farm_level, FARM_LEVELS[1])
+            
+            # Get planted crops
+            cursor.execute(
+                """SELECT plot_index, crop_type, planted_at_message, growth_duration, is_harvested 
+                   FROM planted_crops WHERE client_id = %s AND is_harvested = FALSE""",
+                (client_id,)
+            )
+            crops = []
+            for row in cursor.fetchall():
+                crops.append({
+                    'plotIndex': row['plot_index'],
+                    'cropType': row['crop_type'],
+                    'plantedAtMessage': row['planted_at_message'],
+                    'growthDuration': row['growth_duration'],
+                    'isHarvested': row['is_harvested'],
+                })
+            
+            # Get animals
+            cursor.execute(
+                """SELECT slot_index, animal_type, acquired_at_message, maturity_duration, is_mature 
+                   FROM farm_animals WHERE client_id = %s""",
+                (client_id,)
+            )
+            animals = []
+            for row in cursor.fetchall():
+                animals.append({
+                    'slotIndex': row['slot_index'],
+                    'animalType': row['animal_type'],
+                    'acquiredAtMessage': row['acquired_at_message'],
+                    'maturityDuration': row['maturity_duration'],
+                    'isMature': row['is_mature'],
+                })
+            
+            # Get decorations
+            cursor.execute(
+                """SELECT decoration_type, x_position, y_position, variant 
+                   FROM farm_decorations WHERE client_id = %s""",
+                (client_id,)
+            )
+            decorations = []
+            for row in cursor.fetchall():
+                decorations.append({
+                    'type': row['decoration_type'],
+                    'x': row['x_position'],
+                    'y': row['y_position'],
+                    'variant': row['variant'],
+                })
+            
+            return {
+                "gold": game_state['gold_coins'],
+                "farmLevel": farm_level,
+                "messageCounter": game_state['message_counter'],
+                "crops": crops,
+                "animals": animals,
+                "decorations": decorations,
+                "maxPlots": level_data['plots'],
+                "maxBarnSlots": level_data['barn_slots'],
+                "unlocks": level_data['unlocks'],
+            }
+
+    def plant_crop(self, client_id: int, crop_type: str, plot_index: int, message_counter: int) -> Dict:
+        """Plant a crop in a plot."""
+        from app.config.game_constants import CROPS, FARM_LEVELS
+        
+        # Validate crop type
+        if crop_type not in CROPS:
+            return {"success": False, "error": "Invalid crop type"}
+        
+        crop_info = CROPS[crop_type]
+        
+        # Get farm level and max plots
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT farm_level, gold_coins FROM game_state WHERE client_id = %s",
+                (client_id,)
+            )
+            row = cursor.fetchone()
+            
+            if not row:
+                return {"success": False, "error": "Game state not found"}
+            
+            farm_level = row['farm_level']
+            level_data = FARM_LEVELS.get(farm_level, FARM_LEVELS[1])
+            
+            # Check plot is within unlocked range
+            if plot_index >= level_data['plots']:
+                return {"success": False, "error": "Plot not unlocked"}
+            
+            # Check if plot is already occupied
+            cursor.execute(
+                "SELECT id FROM planted_crops WHERE client_id = %s AND plot_index = %s AND is_harvested = FALSE",
+                (client_id, plot_index)
+            )
+            if cursor.fetchone():
+                return {"success": False, "error": "Plot already has a crop"}
+            
+            # Check gold
+            if row['gold_coins'] < crop_info['seed_cost']:
+                return {"success": False, "error": "Not enough gold"}
+            
+            # Deduct gold and plant
+            new_gold = row['gold_coins'] - crop_info['seed_cost']
+            cursor.execute(
+                "UPDATE game_state SET gold_coins = %s WHERE client_id = %s",
+                (new_gold, client_id)
+            )
+            
+            cursor.execute(
+                """INSERT INTO planted_crops (client_id, crop_type, plot_index, planted_at_message, growth_duration)
+                   VALUES (%s, %s, %s, %s, %s)""",
+                (client_id, crop_type, plot_index, message_counter, crop_info['growth_messages'])
+            )
+            
+            return {
+                "success": True,
+                "goldSpent": crop_info['seed_cost'],
+                "newGold": new_gold
+            }
+
+    def harvest_crop(self, client_id: int, plot_index: int, current_message: int) -> Dict:
+        """Harvest a mature crop."""
+        from app.config.game_constants import CROPS
+        
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """SELECT id, crop_type, planted_at_message, growth_duration 
+                   FROM planted_crops 
+                   WHERE client_id = %s AND plot_index = %s AND is_harvested = FALSE""",
+                (client_id, plot_index)
+            )
+            row = cursor.fetchone()
+            
+            if not row:
+                return {"success": False, "error": "No crop in this plot"}
+            
+            crop_type = row['crop_type']
+            planted_at = row['planted_at_message']
+            growth_needed = row['growth_duration']
+            
+            # Check if mature
+            if current_message - planted_at < growth_needed:
+                return {"success": False, "error": "Crop not yet mature"}
+            
+            crop_info = CROPS.get(crop_type, {})
+            
+            # Mark as harvested
+            cursor.execute(
+                "UPDATE planted_crops SET is_harvested = TRUE WHERE id = %s",
+                (row['id'],)
+            )
+            
+            # Add gold
+            cursor.execute(
+                "SELECT gold_coins FROM game_state WHERE client_id = %s",
+                (client_id,)
+            )
+            current_gold = cursor.fetchone()['gold_coins']
+            sell_price = crop_info.get('sell_price', 10)
+            new_gold = current_gold + sell_price
+            
+            cursor.execute(
+                "UPDATE game_state SET gold_coins = %s WHERE client_id = %s",
+                (new_gold, client_id)
+            )
+            
+            return {
+                "success": True,
+                "cropType": crop_type,
+                "goldEarned": sell_price,
+                "newGold": new_gold
+            }
+
+    def buy_animal(self, client_id: int, animal_type: str, slot_index: int, message_counter: int) -> Dict:
+        """Buy and place an animal in barn."""
+        from app.config.game_constants import ANIMALS, FARM_LEVELS
+        
+        if animal_type not in ANIMALS:
+            return {"success": False, "error": "Invalid animal type"}
+        
+        animal_info = ANIMALS[animal_type]
+        
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check farm level
+            cursor.execute(
+                "SELECT farm_level, gold_coins FROM game_state WHERE client_id = %s",
+                (client_id,)
+            )
+            row = cursor.fetchone()
+            
+            if not row:
+                return {"success": False, "error": "Game state not found"}
+            
+            farm_level = row['farm_level']
+            level_data = FARM_LEVELS.get(farm_level, FARM_LEVELS[1])
+            
+            # Check slot is within unlocked range
+            if slot_index >= level_data['barn_slots']:
+                return {"success": False, "error": "Barn slot not unlocked"}
+            
+            # Check gold
+            if row['gold_coins'] < animal_info['cost']:
+                return {"success": False, "error": "Not enough gold"}
+            
+            # Check slot available
+            cursor.execute(
+                "SELECT id FROM farm_animals WHERE client_id = %s AND slot_index = %s",
+                (client_id, slot_index)
+            )
+            if cursor.fetchone():
+                return {"success": False, "error": "Slot already occupied"}
+            
+            new_gold = row['gold_coins'] - animal_info['cost']
+            cursor.execute(
+                "UPDATE game_state SET gold_coins = %s WHERE client_id = %s",
+                (new_gold, client_id)
+            )
+            
+            cursor.execute(
+                """INSERT INTO farm_animals (client_id, animal_type, slot_index, acquired_at_message, maturity_duration)
+                   VALUES (%s, %s, %s, %s, %s)""",
+                (client_id, animal_type, slot_index, message_counter, animal_info['maturity_messages'])
+            )
+            
+            return {
+                "success": True,
+                "goldSpent": animal_info['cost'],
+                "newGold": new_gold
+            }
+
+    def harvest_animal(self, client_id: int, slot_index: int, current_message: int) -> Dict:
+        """Harvest (sell) a mature animal."""
+        from app.config.game_constants import ANIMALS
+        
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """SELECT id, animal_type, acquired_at_message, maturity_duration, is_mature
+                   FROM farm_animals 
+                   WHERE client_id = %s AND slot_index = %s""",
+                (client_id, slot_index)
+            )
+            row = cursor.fetchone()
+            
+            if not row:
+                return {"success": False, "error": "No animal in this slot"}
+            
+            if row['is_mature']:
+                return {"success": False, "error": "Animal already harvested"}
+            
+            animal_type = row['animal_type']
+            acquired_at = row['acquired_at_message']
+            maturity_needed = row['maturity_duration']
+            
+            if current_message - acquired_at < maturity_needed:
+                return {"success": False, "error": "Animal not yet mature"}
+            
+            animal_info = ANIMALS.get(animal_type, {})
+            
+            # Mark as mature
+            cursor.execute(
+                "UPDATE farm_animals SET is_mature = TRUE WHERE id = %s",
+                (row['id'],)
+            )
+            
+            # Add gold
+            cursor.execute(
+                "SELECT gold_coins FROM game_state WHERE client_id = %s",
+                (client_id,)
+            )
+            current_gold = cursor.fetchone()['gold_coins']
+            sell_price = animal_info.get('sell_price', 50)
+            new_gold = current_gold + sell_price
+            
+            cursor.execute(
+                "UPDATE game_state SET gold_coins = %s WHERE client_id = %s",
+                (new_gold, client_id)
+            )
+            
+            return {
+                "success": True,
+                "animalType": animal_type,
+                "goldEarned": sell_price,
+                "newGold": new_gold
+            }
+
+    def add_decoration(self, client_id: int, decoration_type: str, x: int, y: int, variant: int = 0) -> Dict:
+        """Add a decoration to the farm."""
+        from app.config.game_constants import DECORATIONS
+        
+        if decoration_type not in DECORATIONS:
+            return {"success": False, "error": "Invalid decoration type"}
+        
+        decor_info = DECORATIONS[decoration_type]
+        
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check gold
+            cursor.execute(
+                "SELECT gold_coins FROM game_state WHERE client_id = %s",
+                (client_id,)
+            )
+            row = cursor.fetchone()
+            
+            if not row:
+                return {"success": False, "error": "Game state not found"}
+            
+            if row['gold_coins'] < decor_info['cost']:
+                return {"success": False, "error": "Not enough gold"}
+            
+            new_gold = row['gold_coins'] - decor_info['cost']
+            cursor.execute(
+                "UPDATE game_state SET gold_coins = %s WHERE client_id = %s",
+                (new_gold, client_id)
+            )
+            
+            cursor.execute(
+                """INSERT INTO farm_decorations (client_id, decoration_type, x_position, y_position, variant)
+                   VALUES (%s, %s, %s, %s, %s)""",
+                (client_id, decoration_type, x, y, variant)
+            )
+            
+            return {
+                "success": True,
+                "goldSpent": decor_info['cost'],
+                "newGold": new_gold
+            }
+
+    def upgrade_farm_level(self, client_id: int) -> Dict:
+        """Upgrade farm level."""
+        from app.config.game_constants import UPGRADE_COSTS, FARM_LEVELS, MAX_PLOTS
+        
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT farm_level, gold_coins FROM game_state WHERE client_id = %s",
+                (client_id,)
+            )
+            row = cursor.fetchone()
+            
+            if not row:
+                return {"success": False, "error": "Game state not found"}
+            
+            current_level = row['farm_level']
+            
+            if current_level >= 7:
+                return {"success": False, "error": "Maximum farm level reached"}
+            
+            cost = UPGRADE_COSTS.get(current_level, 100)
+            
+            if row['gold_coins'] < cost:
+                return {"success": False, "error": f"Not enough gold. Need {cost} gold."}
+            
+            new_gold = row['gold_coins'] - cost
+            new_level = current_level + 1
+            
+            cursor.execute(
+                "UPDATE game_state SET farm_level = %s, gold_coins = %s WHERE client_id = %s",
+                (new_level, new_gold, client_id)
+            )
+            
+            level_data = FARM_LEVELS.get(new_level, {})
+            
+            return {
+                "success": True,
+                "newLevel": new_level,
+                "cost": cost,
+                "newGold": new_gold,
+                "newPlots": level_data.get('plots', 0),
+                "newBarnSlots": level_data.get('barn_slots', 0),
+                "unlocks": level_data.get('unlocks', [])
+            }
+
+    def get_farm_shop(self, client_id: int) -> Dict:
+        """Get available items to buy from shop."""
+        from app.config.game_constants import CROPS, ANIMALS, DECORATIONS, FARM_LEVELS, UPGRADE_COSTS
+        
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT gold_coins, farm_level FROM game_state WHERE client_id = %s",
+                (client_id,)
+            )
+            row = cursor.fetchone()
+            
+            if not row:
+                return {"seeds": [], "animals": [], "decorations": [], "playerGold": 0, "farmLevel": 1}
+            
+            farm_level = row['farm_level']
+            
+            # Seeds always available
+            seeds = [
+                {"id": crop_type, "name": crop_type.capitalize(), "cost": info["seed_cost"], "growthMessages": info["growth_messages"]}
+                for crop_type, info in CROPS.items()
+            ]
+            
+            # Animals depend on farm level
+            available_animals = []
+            if farm_level >= 1:
+                available_animals.append({"id": "chicken", "name": "Chicken", "cost": ANIMALS["chicken"]["cost"], "maturityMessages": ANIMALS["chicken"]["maturity_messages"]})
+            if farm_level >= 3:
+                available_animals.append({"id": "cow", "name": "Cow", "cost": ANIMALS["cow"]["cost"], "maturityMessages": ANIMALS["cow"]["maturity_messages"]})
+            if farm_level >= 4:
+                available_animals.append({"id": "horse", "name": "Horse", "cost": ANIMALS["horse"]["cost"], "maturityMessages": ANIMALS["horse"]["maturity_messages"]})
+            
+            # Decorations
+            decorations = [
+                {"id": dec_type, "name": info["name"], "cost": info["cost"]}
+                for dec_type, info in DECORATIONS.items()
+            ]
+            
+            # Upgrade info
+            level_data = FARM_LEVELS.get(farm_level, FARM_LEVELS[1])
+            upgrade_cost = None
+            if farm_level < 7:
+                upgrade_cost = UPGRADE_COSTS.get(farm_level, 100)
+            
+            return {
+                "seeds": seeds,
+                "animals": available_animals,
+                "decorations": decorations,
+                "playerGold": row['gold_coins'],
+                "farmLevel": farm_level,
+                "currentPlots": level_data['plots'],
+                "currentBarnSlots": level_data['barn_slots'],
+                "upgradeCost": upgrade_cost,
+                "nextLevelUnlocks": level_data.get('unlocks', []),
+            }
+
+    def get_marina_message_count(self, client_id: int, counselor_id: int) -> int:
+        """Get number of messages exchanged with Marina."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COUNT(*) as count 
+                FROM messages m
+                JOIN sessions s ON m.session_id = s.id
+                WHERE s.client_id = %s AND s.counselor_id = %s
+            """, (client_id, counselor_id))
+            result = cursor.fetchone()
+            return result['count'] if result else 0
+
+    def unlock_mermaid(self, client_id: int) -> Dict:
+        """Unlock mermaid for farm (called after 100 messages with Marina)."""
+        from app.config.game_constants import MARINA_MERMAID_UNLOCK_MESSAGES
+        
+        # First check if already unlocked
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id FROM farm_animals WHERE client_id = %s AND animal_type = 'mermaid'",
+                (client_id,)
+            )
+            if cursor.fetchone():
+                return {"success": True, "message": "Mermaid already unlocked", "alreadyUnlocked": True}
+            
+            # Check if we have a pond (need to check decorations)
+            cursor.execute(
+                "SELECT id FROM farm_decorations WHERE client_id = %s AND decoration_type = 'pond'",
+                (client_id,)
+            )
+            has_pond = cursor.fetchone() is not None
+            
+            # Add mermaid (free - it's a decoration essentially)
+            cursor.execute(
+                """INSERT INTO farm_animals (client_id, animal_type, slot_index, acquired_at_message, maturity_duration, is_mature)
+                   VALUES (%s, %s, %s, %s, %s, %s)""",
+                (client_id, 'mermaid', 0, 0, 0, True)  # Mermaid is instant, decorative
+            )
+            
+            return {
+                "success": True,
+                "message": "Mermaid unlocked!",
+                "requiresPond": not has_pond,
+            }
+
     # Change Log Operations
     def _log_change(
         self,

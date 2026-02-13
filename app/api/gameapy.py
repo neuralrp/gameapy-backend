@@ -292,6 +292,179 @@ async def get_farm_shop(current_user: dict = Depends(get_current_user)):
 
 
 # ============================================================
+# Farm Minigame Endpoints (Message-based growth)
+# ============================================================
+
+@router.get("/farm/status")
+async def get_farm_status(current_user: dict = Depends(get_current_user)):
+    """Get complete farm status: gold, plots, animals, message counter."""
+    client_id = current_user["id"]
+    # Initialize farm if needed
+    db.initialize_farm(client_id)
+    return db.get_farm_status(client_id)
+
+
+@router.post("/farm/plant")
+async def plant_crop(
+    crop_type: str,
+    plot_index: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Plant a crop in a plot."""
+    client_id = current_user["id"]
+    message_counter = db.get_message_counter(client_id)
+    
+    result = db.plant_crop(client_id, crop_type, plot_index, message_counter)
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    
+    return result
+
+
+@router.post("/farm/harvest")
+async def harvest_crop(
+    plot_index: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Harvest a mature crop."""
+    client_id = current_user["id"]
+    message_counter = db.get_message_counter(client_id)
+    
+    result = db.harvest_crop(client_id, plot_index, message_counter)
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    
+    return result
+
+
+@router.post("/farm/buy-animal")
+async def buy_animal(
+    animal_type: str,
+    slot_index: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Buy and place an animal in barn."""
+    client_id = current_user["id"]
+    message_counter = db.get_message_counter(client_id)
+    
+    result = db.buy_animal(client_id, animal_type, slot_index, message_counter)
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    
+    return result
+
+
+@router.post("/farm/harvest-animal")
+async def harvest_animal(
+    slot_index: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Harvest (sell) a mature animal."""
+    client_id = current_user["id"]
+    message_counter = db.get_message_counter(client_id)
+    
+    result = db.harvest_animal(client_id, slot_index, message_counter)
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    
+    return result
+
+
+@router.post("/farm/add-decoration")
+async def add_decoration(
+    decoration_type: str,
+    x: int,
+    y: int,
+    variant: int = 0,
+    current_user: dict = Depends(get_current_user)
+):
+    """Add a decoration to the farm."""
+    client_id = current_user["id"]
+    
+    result = db.add_decoration(client_id, decoration_type, x, y, variant)
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    
+    return result
+
+
+@router.post("/farm/upgrade")
+async def upgrade_farm(current_user: dict = Depends(get_current_user)):
+    """Upgrade farm level to unlock more plots/animals."""
+    client_id = current_user["id"]
+    
+    result = db.upgrade_farm_level(client_id)
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    
+    return result
+
+
+@router.post("/game-state/daily-login")
+async def daily_login(current_user: dict = Depends(get_current_user)):
+    """Claim daily login bonus (5 gold, once per day)."""
+    client_id = current_user["id"]
+    
+    success, message = db.claim_daily_login(client_id)
+    
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    
+    return {"success": True, "message": message, "gold_awarded": 5}
+
+
+@router.get("/farm/shop-v2")
+async def get_farm_shop_v2(current_user: dict = Depends(get_current_user)):
+    """Get farm shop items (v2 with crops/animals/decorations)."""
+    client_id = current_user["id"]
+    db.initialize_farm(client_id)
+    return db.get_farm_shop(client_id)
+
+
+@router.post("/farm/increment-messages")
+async def increment_messages(current_user: dict = Depends(get_current_user)):
+    """Increment message counter (called when user sends a chat message)."""
+    client_id = current_user["id"]
+    new_count = db.increment_message_counter(client_id)
+    return {"success": True, "message_counter": new_count}
+
+
+@router.get("/farm/check-marina")
+async def check_marina_unlock(current_user: dict = Depends(get_current_user)):
+    """Check if user has unlocked mermaid through Marina messages."""
+    client_id = current_user["id"]
+    
+    # Get Marina's counselor ID from database
+    from app.config.game_constants import MARINA_MERMAID_UNLOCK_MESSAGES
+    
+    # For now, we'll just check if they have the mermaid
+    farm_status = db.get_farm_status(client_id)
+    has_mermaid = any(a.get('animalType') == 'mermaid' for a in farm_status.get('animals', []))
+    
+    return {
+        "hasMermaid": has_mermaid,
+        "unlockRequirement": MARINA_MERMAID_UNLOCK_MESSAGES,
+        "currentMessages": farm_status.get('messageCounter', 0)
+    }
+
+
+@router.post("/farm/unlock-mermaid")
+async def unlock_mermaid(current_user: dict = Depends(get_current_user)):
+    """Unlock mermaid for farm (called when Marina milestone reached)."""
+    client_id = current_user["id"]
+    
+    result = db.unlock_mermaid(client_id)
+    
+    return result
+
+
+# ============================================================
 # Phase 3: Unified Card Management Endpoints
 # ============================================================
 

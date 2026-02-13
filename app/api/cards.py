@@ -96,6 +96,8 @@ async def save_card(
                 message=f"Invalid card type: {request.card_type}"
             )
 
+        db.update_gold_coins(client_id, 10, "card_created")
+
         return APIResponse(
             success=True,
             message="Card saved successfully",
