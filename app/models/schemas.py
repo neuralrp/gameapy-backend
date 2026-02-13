@@ -114,7 +114,6 @@ class Message(BaseModelResponse):
 
 
 class SessionCreate(BaseModel):
-    client_id: int
     counselor_id: int
 
 
