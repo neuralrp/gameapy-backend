@@ -37,6 +37,9 @@ CROPS = {
     },
 }
 
+# Water bonus: 30% reduction in messages per watered stage
+WATER_BONUS = 0.30
+
 # Animal definitions
 ANIMALS = {
     "chicken": {

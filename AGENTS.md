@@ -1,6 +1,6 @@
 # Gameapy - Agent Quick Reference
 
-**Version**: 3.8.0 | **Last Updated**: 2026-02-13 (Garden Minigame - Phase 9 complete)
+**Version**: 3.9.0 | **Last Updated**: 2026-02-13 (Farm Test Suite Complete)
 
 ---
 
@@ -66,7 +66,7 @@ gameapy-web/              # Web frontend repo
 - Auto-Update System: Invisible updates with per-card toggles
 - Context Assembly: Self + pinned + current + recent cards
 - Pytest Testing Infrastructure: File-based test DB, LLM mocking, test isolation
-- **All 99 tests passing** (100% pass rate, 68% code coverage)
+- **All 225 tests passing** (100% pass rate, 75% code coverage)
 - Deterministic test execution (no state pollution, per-request LLM clients)
 - **Human-Readable Context**: JSON cards converted to prose for better LLM comprehension
 - **Prompt Optimization**: Persona-first ordering, trimmed examples, compressed crisis protocol
@@ -398,8 +398,10 @@ response = await simple_llm_client.chat_completion(
  | `backend/tests/test_e2e_flows.py` | E2E flow tests | 6 tests ✅ |
 | `backend/tests/test_llm.py` | Real LLM integration tests | 3 tests ✅ |
 | `backend/tests/test_custom_counselors.py` | Custom advisors test suite | 19 tests ✅ |
-| `backend/tests/test_api_farm.py` | Farm API tests | - |
-| `backend/tests/test_database_farm.py` | Farm database tests | - |
+| `backend/tests/test_api_farm.py` | Farm API tests | 23 tests ✅ |
+| `backend/tests/test_database_farm.py` | Farm database tests | 45 tests ✅ |
+| `backend/tests/test_e2e_farm_flows.py` | E2E farm flow tests | 3 tests ✅ |
+| `backend/tests/test_integration_chat_farm.py` | Chat-farm integration tests | 2 tests ✅ |
 
 ---
 
@@ -517,8 +519,10 @@ pytest tests/ --cov=app --cov-report=html
 - E2E flow tests: 6 tests ✅
 - LLM integration tests: 3 tests ✅
 - Custom counselors tests: 19 tests ✅
-- Farm API tests: ✅
-- Farm database tests: ✅
+- Farm API tests: 23 tests ✅
+- Farm database tests: 45 tests ✅
+- E2E farm flow tests: 3 tests ✅
+- Chat-farm integration tests: 2 tests ✅
 
 See `PHASE7_TEST_FIXES_SUMMARY.md` for full details on test infrastructure.
 

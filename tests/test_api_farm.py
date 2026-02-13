@@ -328,3 +328,102 @@ class TestDecorationAPI:
         )
         
         assert response.status_code == 400
+
+
+@pytest.mark.integration
+class TestWateringAPI:
+    """Test watering API endpoints."""
+
+    @pytest.mark.integration
+    def test_water_crop_endpoint(self, test_client_with_auth, sample_user):
+        """POST /farm/water waters a crop."""
+        db.update_gold_coins(sample_user, 10, "test")
+        test_client_with_auth.post(
+            "/api/v1/farm/plant",
+            params={"crop_type": "parsnip", "plot_index": 0}
+        )
+        
+        response = test_client_with_auth.post(
+            "/api/v1/farm/water",
+            params={"plot_index": 0, "stage": 0}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data['success'] is True
+
+    @pytest.mark.integration
+    def test_water_already_watered_returns_400(self, test_client_with_auth, sample_user):
+        """POST /farm/water returns 400 for already watered stage."""
+        db.update_gold_coins(sample_user, 10, "test")
+        test_client_with_auth.post(
+            "/api/v1/farm/plant",
+            params={"crop_type": "parsnip", "plot_index": 0}
+        )
+        test_client_with_auth.post(
+            "/api/v1/farm/water",
+            params={"plot_index": 0, "stage": 0}
+        )
+        
+        response = test_client_with_auth.post(
+            "/api/v1/farm/water",
+            params={"plot_index": 0, "stage": 0}
+        )
+        assert response.status_code == 400
+
+
+@pytest.mark.integration
+class TestMarinaMermaidAPI:
+    """Test Marina/mermaid API endpoints."""
+
+    @pytest.mark.integration
+    def test_check_marina_endpoint(self, test_client_with_auth, sample_user):
+        """GET /farm/check-marina returns unlock status."""
+        response = test_client_with_auth.get("/api/v1/farm/check-marina")
+        assert response.status_code == 200
+        data = response.json()
+        assert 'hasMermaid' in data
+        assert 'unlockRequirement' in data
+        assert 'currentMessages' in data
+
+
+@pytest.mark.integration
+class TestFarmItemsAPI:
+    """Test farm items API endpoints."""
+
+    @pytest.mark.integration
+    def test_get_farm_items_endpoint(self, test_client_with_auth, sample_user):
+        """GET /farm-items returns items list."""
+        response = test_client_with_auth.get("/api/v1/farm-items")
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
+
+    @pytest.mark.integration
+    def test_add_farm_item_endpoint(self, test_client_with_auth, sample_user):
+        """POST /farm-items creates item."""
+        response = test_client_with_auth.post(
+            "/api/v1/farm-items",
+            json={
+                "item_type": "seed",
+                "item_name": "Parsnip Seeds",
+                "metadata": {"count": 1}
+            }
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data['success'] is True
+
+
+@pytest.mark.integration
+class TestTilledPlotsAPI:
+    """Test tilled plots API endpoint."""
+
+    @pytest.mark.integration
+    def test_get_tilled_plots_endpoint(self, test_client_with_auth, sample_user):
+        """GET /farm/tilled-plots returns correct list."""
+        db.update_gold_coins(sample_user, 20, "test")
+        db.till_plot(sample_user, 0)
+        db.till_plot(sample_user, 1)
+        
+        response = test_client_with_auth.get("/api/v1/farm/tilled-plots")
+        assert response.status_code == 200
+        assert response.json()['tilledPlots'] == [0, 1]

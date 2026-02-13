@@ -464,6 +464,53 @@ async def unlock_mermaid(current_user: dict = Depends(get_current_user)):
     return result
 
 
+@router.post("/farm/till")
+async def till_plot(
+    plot_index: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Till a plot (prepare soil for planting)."""
+    client_id = current_user["id"]
+    
+    result = db.till_plot(client_id, plot_index)
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    
+    return result
+
+
+@router.post("/farm/water")
+async def water_crop(
+    plot_index: int,
+    stage: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Water a planted crop at a specific growth stage.
+    
+    Watering per stage gives 30% speed bonus for that stage.
+    Each stage can only be watered once.
+    """
+    client_id = current_user["id"]
+    
+    result = db.water_crop(client_id, plot_index, stage)
+    
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("error"))
+    
+    return result
+
+
+@router.get("/farm/tilled-plots")
+async def get_tilled_plots(current_user: dict = Depends(get_current_user)):
+    """Get list of tilled plot indices (not planted)."""
+    client_id = current_user["id"]
+    
+    plots = db.get_tilled_plots(client_id)
+    
+    return {"tilledPlots": plots}
+
+
 # ============================================================
 # Phase 3: Unified Card Management Endpoints
 # ============================================================

@@ -486,3 +486,276 @@ class TestGoldOperations:
             cursor.execute("SELECT gold_coins FROM game_state WHERE client_id = %s", (sample_client,))
             row = cursor.fetchone()
             assert row['gold_coins'] == 10
+
+
+@pytest.mark.integration
+class TestTilling:
+    """Test plot tilling operations."""
+
+    @pytest.mark.integration
+    def test_till_plot_success(self, sample_client):
+        """Till plot creates farm_plots record."""
+        result = db.till_plot(sample_client, 0)
+        assert result['success'] is True
+        assert result['plotIndex'] == 0
+        assert result['state'] == 'tilled'
+
+    @pytest.mark.integration
+    def test_till_plot_already_tilled(self, sample_client):
+        """Cannot till already tilled plot."""
+        db.till_plot(sample_client, 0)
+        result = db.till_plot(sample_client, 0)
+        assert result['success'] is False
+        assert 'already tilled' in result['error']
+
+    @pytest.mark.integration
+    def test_till_plot_has_crop(self, sample_client):
+        """Cannot till plot with existing crop."""
+        db.update_gold_coins(sample_client, 10, "test")
+        db.plant_crop(sample_client, "parsnip", 0, 0)
+        result = db.till_plot(sample_client, 0)
+        assert result['success'] is False
+
+    @pytest.mark.integration
+    def test_till_plot_not_unlocked(self, sample_client):
+        """Cannot till plot beyond farm level."""
+        result = db.till_plot(sample_client, 10)
+        assert result['success'] is False
+        assert 'not unlocked' in result['error']
+
+    @pytest.mark.integration
+    def test_get_tilled_plots_empty(self, sample_client):
+        """Get tilled plots returns empty list initially."""
+        plots = db.get_tilled_plots(sample_client)
+        assert plots == []
+
+    @pytest.mark.integration
+    def test_get_tilled_plots_with_crops(self, sample_client):
+        """Get tilled plots excludes plots with crops."""
+        db.update_gold_coins(sample_client, 20, "test")
+        db.till_plot(sample_client, 0)
+        db.till_plot(sample_client, 1)
+        db.plant_crop(sample_client, "parsnip", 0, 0)
+        
+        plots = db.get_tilled_plots(sample_client)
+        assert plots == [1]
+
+
+@pytest.mark.integration
+class TestWatering:
+    """Test crop watering system."""
+
+    @pytest.mark.integration
+    def test_water_crop_success(self, sample_client):
+        """Water crop adds stage to watered_stages."""
+        db.update_gold_coins(sample_client, 10, "test")
+        db.plant_crop(sample_client, "parsnip", 0, 0)
+        
+        result = db.water_crop(sample_client, 0, 0)
+        assert result['success'] is True
+        assert 0 in result['wateredStages']
+
+    @pytest.mark.integration
+    def test_water_crop_already_watered_stage(self, sample_client):
+        """Cannot water same stage twice."""
+        db.update_gold_coins(sample_client, 10, "test")
+        db.plant_crop(sample_client, "parsnip", 0, 0)
+        db.water_crop(sample_client, 0, 0)
+        
+        result = db.water_crop(sample_client, 0, 0)
+        assert result['success'] is False
+        assert 'already watered' in result['error']
+
+    @pytest.mark.integration
+    def test_water_crop_no_crop(self, sample_client):
+        """Cannot water empty plot."""
+        result = db.water_crop(sample_client, 0, 0)
+        assert result['success'] is False
+        assert 'No crop' in result['error']
+
+    @pytest.mark.integration
+    def test_water_crop_multiple_stages(self, sample_client):
+        """Can water multiple different stages."""
+        db.update_gold_coins(sample_client, 10, "test")
+        db.plant_crop(sample_client, "parsnip", 0, 0)
+        
+        db.water_crop(sample_client, 0, 0)
+        result = db.water_crop(sample_client, 0, 1)
+        assert result['success'] is True
+        assert 0 in result['wateredStages']
+        assert 1 in result['wateredStages']
+
+    @pytest.mark.integration
+    def test_watered_stages_persistence(self, sample_client):
+        """Watered stages persist in database."""
+        db.update_gold_coins(sample_client, 10, "test")
+        db.plant_crop(sample_client, "parsnip", 0, 0)
+        db.water_crop(sample_client, 0, 0)
+        db.water_crop(sample_client, 0, 2)
+        
+        status = db.get_farm_status(sample_client)
+        crop = status['crops'][0]
+        assert 0 in crop['wateredStages']
+        assert 2 in crop['wateredStages']
+
+
+@pytest.mark.integration
+class TestMermaidUnlock:
+    """Test mermaid unlock feature (Marina milestone)."""
+
+    @pytest.mark.integration
+    def test_unlock_mermaid_success(self, sample_client):
+        """Unlock mermaid adds mermaid to farm_animals."""
+        result = db.unlock_mermaid(sample_client)
+        assert result['success'] is True
+        assert 'Mermaid unlocked' in result['message']
+
+    @pytest.mark.integration
+    def test_unlock_mermaid_already_unlocked(self, sample_client):
+        """Unlock mermaid is idempotent."""
+        db.unlock_mermaid(sample_client)
+        result = db.unlock_mermaid(sample_client)
+        assert result['success'] is True
+        assert result.get('alreadyUnlocked') is True
+
+    @pytest.mark.integration
+    def test_mermaid_appears_in_farm_status(self, sample_client):
+        """Mermaid appears in farm status after unlock."""
+        db.unlock_mermaid(sample_client)
+        status = db.get_farm_status(sample_client)
+        mermaid = [a for a in status['animals'] if a['animalType'] == 'mermaid']
+        assert len(mermaid) == 1
+
+    @pytest.mark.integration
+    def test_get_marina_message_count(self, sample_client, sample_counselor):
+        """Get message count for counselor."""
+        db.create_session(sample_client, sample_counselor)
+        count = db.get_marina_message_count(sample_client, sample_counselor)
+        assert isinstance(count, int)
+
+
+@pytest.mark.integration
+class TestFarmItems:
+    """Test legacy farm items system."""
+
+    @pytest.mark.integration
+    def test_get_farm_items_empty(self, sample_client):
+        """Get farm items returns empty list initially."""
+        items = db.get_farm_items(sample_client)
+        assert items == []
+
+    @pytest.mark.integration
+    def test_add_farm_item_success(self, sample_client):
+        """Add farm item creates record."""
+        item_id = db.add_farm_item(
+            client_id=sample_client,
+            item_type="egg",
+            item_name="Chicken Egg",
+            item_metadata={"quality": "normal"}
+        )
+        assert item_id > 0
+        
+        items = db.get_farm_items(sample_client)
+        assert len(items) == 1
+        assert items[0]['item_type'] == "egg"
+
+    @pytest.mark.integration
+    def test_add_farm_item_with_metadata(self, sample_client):
+        """Add farm item stores metadata."""
+        db.add_farm_item(
+            client_id=sample_client,
+            item_type="seed",
+            item_name="Corn Seeds",
+            item_metadata={"count": 5}
+        )
+        
+        items = db.get_farm_items(sample_client)
+        assert items[0]['metadata']['count'] == 5
+
+
+@pytest.mark.integration
+class TestGrowthProgression:
+    """Test message-based growth calculations."""
+
+    @pytest.mark.integration
+    def test_crop_growth_stage_exists(self, sample_client):
+        """Crop growth stage field exists in status."""
+        db.update_gold_coins(sample_client, 10, "test")
+        db.plant_crop(sample_client, "parsnip", 0, 0)
+        
+        status = db.get_farm_status(sample_client)
+        assert 'growthStage' in status['crops'][0]
+
+    @pytest.mark.integration
+    def test_animal_maturity_calculation(self, sample_client):
+        """Animal maturity reflects message progress."""
+        db.update_gold_coins(sample_client, 50, "test")
+        db.buy_animal(sample_client, "chicken", 0, 0)
+        
+        for i in range(40):
+            db.increment_message_counter(sample_client)
+        
+        result = db.harvest_animal(sample_client, 0, 40)
+        assert result['success'] is True
+
+    @pytest.mark.integration
+    def test_different_crops_different_durations(self, sample_client):
+        """Different crops have different growth durations."""
+        db.update_gold_coins(sample_client, 30, "test")
+        
+        db.plant_crop(sample_client, "parsnip", 0, 0)
+        db.plant_crop(sample_client, "corn", 1, 0)
+        
+        status = db.get_farm_status(sample_client)
+        parsnip = [c for c in status['crops'] if c['cropType'] == 'parsnip'][0]
+        corn = [c for c in status['crops'] if c['cropType'] == 'corn'][0]
+        
+        assert parsnip['growthDuration'] == 10
+        assert corn['growthDuration'] == 30
+
+
+@pytest.mark.integration
+class TestFarmEdgeCases:
+    """Test edge cases and error scenarios."""
+
+    @pytest.mark.integration
+    def test_concurrent_plant_same_plot(self, sample_client):
+        """Second plant on same plot fails."""
+        db.update_gold_coins(sample_client, 20, "test")
+        
+        result1 = db.plant_crop(sample_client, "parsnip", 0, 0)
+        result2 = db.plant_crop(sample_client, "potato", 0, 0)
+        
+        assert result1['success'] is True
+        assert result2['success'] is False
+
+    @pytest.mark.integration
+    def test_harvest_twice_same_crop(self, sample_client):
+        """Cannot harvest same crop twice."""
+        db.update_gold_coins(sample_client, 10, "test")
+        db.plant_crop(sample_client, "parsnip", 0, 0)
+        
+        db.harvest_crop(sample_client, 0, 10)
+        result = db.harvest_crop(sample_client, 0, 15)
+        
+        assert result['success'] is False
+        assert 'No crop' in result['error']
+
+    @pytest.mark.integration
+    def test_farm_state_consistency(self, sample_client):
+        """Farm operations maintain state consistency."""
+        db.update_gold_coins(sample_client, 100, "test")
+        
+        db.plant_crop(sample_client, "parsnip", 0, 0)
+        db.plant_crop(sample_client, "potato", 1, 0)
+        db.buy_animal(sample_client, "chicken", 0, 0)
+        db.add_decoration(sample_client, "oak_tree", 5, 5, 0)
+        
+        status = db.get_farm_status(sample_client)
+        
+        assert len(status['crops']) == 2
+        assert len(status['animals']) == 1
+        assert len(status['decorations']) == 1
+        
+        expected_spent = 5 + 8 + 30 + 25
+        assert status['gold'] == 100 - expected_spent

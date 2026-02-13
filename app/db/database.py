@@ -1210,19 +1210,45 @@ class Database:
             
             # Get planted crops
             cursor.execute(
-                """SELECT plot_index, crop_type, planted_at_message, growth_duration, is_harvested 
+                """SELECT plot_index, crop_type, planted_at_message, growth_duration, is_harvested, 
+                          COALESCE(watered_stages, '[]'::jsonb) as watered_stages, 
+                          COALESCE(growth_stage, 0) as growth_stage
                    FROM planted_crops WHERE client_id = %s AND is_harvested = FALSE""",
                 (client_id,)
             )
             crops = []
             for row in cursor.fetchall():
+                # Parse watered_stages
+                try:
+                    watered_stages = row['watered_stages']
+                    if isinstance(watered_stages, str):
+                        watered_stages = json.loads(watered_stages)
+                    elif hasattr(watered_stages, 'tolist'):
+                        watered_stages = watered_stages.tolist()
+                except (json.JSONDecodeError, AttributeError):
+                    watered_stages = []
+                
                 crops.append({
                     'plotIndex': row['plot_index'],
                     'cropType': row['crop_type'],
                     'plantedAtMessage': row['planted_at_message'],
                     'growthDuration': row['growth_duration'],
                     'isHarvested': row['is_harvested'],
+                    'wateredStages': watered_stages,
+                    'growthStage': row['growth_stage'],
                 })
+            
+            # Get tilled plots (not planted)
+            cursor.execute(
+                """SELECT fp.plot_index 
+                   FROM farm_plots fp
+                   LEFT JOIN planted_crops pc ON fp.client_id = pc.client_id 
+                       AND fp.plot_index = pc.plot_index 
+                       AND pc.is_harvested = FALSE
+                   WHERE fp.client_id = %s AND pc.id IS NULL""",
+                (client_id,)
+            )
+            tilledPlots = [row['plot_index'] for row in cursor.fetchall()]
             
             # Get animals
             cursor.execute(
@@ -1260,6 +1286,7 @@ class Database:
                 "farmLevel": farm_level,
                 "messageCounter": game_state['message_counter'],
                 "crops": crops,
+                "tilledPlots": tilledPlots,
                 "animals": animals,
                 "decorations": decorations,
                 "maxPlots": level_data['plots'],
@@ -1316,9 +1343,9 @@ class Database:
             )
             
             cursor.execute(
-                """INSERT INTO planted_crops (client_id, crop_type, plot_index, planted_at_message, growth_duration)
-                   VALUES (%s, %s, %s, %s, %s)""",
-                (client_id, crop_type, plot_index, message_counter, crop_info['growth_messages'])
+                """INSERT INTO planted_crops (client_id, crop_type, plot_index, planted_at_message, growth_duration, watered_stages)
+                   VALUES (%s, %s, %s, %s, %s, %s)""",
+                (client_id, crop_type, plot_index, message_counter, crop_info['growth_messages'], json.dumps([]))
             )
             
             return {
@@ -1686,6 +1713,132 @@ class Database:
                 "message": "Mermaid unlocked!",
                 "requiresPond": not has_pond,
             }
+
+    def till_plot(self, client_id: int, plot_index: int) -> Dict:
+        """Till a plot (prepare soil for planting)."""
+        from app.config.game_constants import FARM_LEVELS
+        
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check farm level and max plots
+            cursor.execute(
+                "SELECT farm_level FROM game_state WHERE client_id = %s",
+                (client_id,)
+            )
+            row = cursor.fetchone()
+            
+            if not row:
+                return {"success": False, "error": "Game state not found"}
+            
+            farm_level = row['farm_level']
+            level_data = FARM_LEVELS.get(farm_level, FARM_LEVELS[1])
+            
+            if plot_index >= level_data['plots']:
+                return {"success": False, "error": "Plot not unlocked"}
+            
+            # Check if already tilled
+            cursor.execute(
+                "SELECT id FROM farm_plots WHERE client_id = %s AND plot_index = %s",
+                (client_id, plot_index)
+            )
+            if cursor.fetchone():
+                return {"success": False, "error": "Plot already tilled"}
+            
+            # Check if already has a crop
+            cursor.execute(
+                "SELECT id FROM planted_crops WHERE client_id = %s AND plot_index = %s AND is_harvested = FALSE",
+                (client_id, plot_index)
+            )
+            if cursor.fetchone():
+                return {"success": False, "error": "Plot already has a crop"}
+            
+            # Till the plot
+            cursor.execute(
+                """INSERT INTO farm_plots (client_id, plot_index, state)
+                   VALUES (%s, %s, 'tilled')""",
+                (client_id, plot_index)
+            )
+            
+            return {
+                "success": True,
+                "plotIndex": plot_index,
+                "state": "tilled"
+            }
+
+    def water_crop(self, client_id: int, plot_index: int, stage: int) -> Dict:
+        """Water a planted crop at a specific growth stage.
+        
+        Args:
+            client_id: The client ID
+            plot_index: The plot index
+            stage: The current growth stage (0-indexed)
+        
+        Returns:
+            Dict with success status and watered_stages array
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check if crop exists and get current watered_stages
+            cursor.execute(
+                """SELECT id, COALESCE(watered_stages, '[]'::jsonb) as watered_stages 
+                   FROM planted_crops 
+                   WHERE client_id = %s AND plot_index = %s AND is_harvested = FALSE""",
+                (client_id, plot_index)
+            )
+            row = cursor.fetchone()
+            
+            if not row:
+                return {"success": False, "error": "No crop in this plot"}
+            
+            # Parse the watered_stages array
+            try:
+                watered_stages = row['watered_stages']
+                if isinstance(watered_stages, str):
+                    watered_stages = json.loads(watered_stages)
+                elif hasattr(watered_stages, 'tolist'):
+                    watered_stages = watered_stages.tolist()
+            except (json.JSONDecodeError, AttributeError):
+                watered_stages = []
+            
+            # Check if this stage is already watered
+            if stage in watered_stages:
+                return {"success": False, "error": "This stage already watered", "wateredStages": watered_stages}
+            
+            # Add the stage to watered_stages
+            watered_stages.append(stage)
+            
+            # Water the crop at this stage
+            cursor.execute(
+                "UPDATE planted_crops SET watered_stages = %s WHERE id = %s",
+                (json.dumps(watered_stages), row['id'])
+            )
+            
+            return {
+                "success": True,
+                "plotIndex": plot_index,
+                "stage": stage,
+                "wateredStages": watered_stages
+            }
+
+    def get_tilled_plots(self, client_id: int) -> List[int]:
+        """Get list of tilled plot indices (not planted)."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Get tilled plots that don't have crops
+            cursor.execute(
+                """SELECT fp.plot_index 
+                   FROM farm_plots fp
+                   LEFT JOIN planted_crops pc ON fp.client_id = pc.client_id 
+                       AND fp.plot_index = pc.plot_index 
+                       AND pc.is_harvested = FALSE
+                   WHERE fp.client_id = %s AND pc.id IS NULL""",
+                (client_id,)
+            )
+            
+            return [row['plot_index'] for row in cursor.fetchall()]
 
     # Change Log Operations
     def _log_change(
