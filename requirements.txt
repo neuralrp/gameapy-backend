@@ -23,7 +23,6 @@ psycopg2-binary>=2.9.9
 
 # Password hashing
 bcrypt>=4.1.2
-passlib>=1.7.4
 
 # JWT authentication
 python-jose[cryptography]>=3.3.0
