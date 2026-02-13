@@ -1,6 +1,6 @@
 # Gameapy - Agent Quick Reference
 
-**Version**: 3.7.0 | **Last Updated**: 2026-02-11 (Field-level timestamp metadata for cards)
+**Version**: 3.8.0 | **Last Updated**: 2026-02-13 (Garden Minigame - Phase 9 complete)
 
 ---
 
@@ -53,7 +53,7 @@ gameapy-web/              # Web frontend repo
 
 **Completed Backend**: Phases 1-7 (All backend features + complete test infrastructure)
 **Completed Frontend**: Phases 0-6 (Web MVP complete + deployed to Vercel)
-**Latest Update**: Custom Advisors feature - users can create up to 5 custom AI counselors with 3-question creation flow, migration 008 with performance_metrics table, advisor tab in CardInventoryModal
+**Latest Update**: Garden Minigame (Phase 9) - Farm backend with crop planting, harvesting, and growth tracking. Farm API endpoints, database operations, and tests added.
 **Production Deploy**: Backend on Railway, Frontend on Vercel
 **Status**: Live at https://gameapy-web.vercel.app
 
@@ -89,6 +89,11 @@ gameapy-web/              # Web frontend repo
    - Full CRUD operations via API
    - Soft-delete (preserves session history)
    - Performance metrics tracking in performance_metrics table
+- **Garden Minigame**: Farm backend with crop management
+  - Crops: potato, tomato, corn, cauliflower, parsnip (with growth stages)
+  - Planting and harvesting operations
+  - Per-client farm state tracking
+  - Growth stage progression system
 
 ### What's Working (Frontend - Web MVP)
 - **Phase 0 Complete**: React + Vite + TypeScript project initialized
@@ -292,7 +297,7 @@ response = await simple_llm_client.chat_completion(
 | 6 | ✅ | Pytest Infrastructure (test isolation, LLM mocking, fixtures) |
 | 7 | ✅ | New Test Coverage (DB, API, E2E) - 89/89 tests passing (100%), 68% coverage |
 | 8 | ❌ | Flutter UI Development (ARCHIVED - replaced by web MVP) |
-| 9 | ⏳ | Garden Minigame (optional - deferred) |
+| 9 | ✅ | Garden Minigame - Farm backend with crop planting/harvesting, database tables, API endpoints, and tests |
 
 ### Frontend Phases (Web MVP)
 
@@ -328,6 +333,7 @@ response = await simple_llm_client.chat_completion(
 | `backend/app/db/database.py` | All DB operations (650+ lines) |
  | `backend/app/api/cards.py` | Card management endpoints |
 | `backend/app/api/custom_counselors.py` | Custom advisors API endpoints (CRUD) |
+| `backend/app/api/gameapy.py` | Farm minigame API endpoints (planting, harvesting, status) |
 | `backend/app/api/guide.py` | Guide onboarding endpoints |
 | `backend/app/api/session_analyzer.py` | Session analysis endpoint |
 | `backend/app/services/card_generator.py` | LLM card generation (max_tokens=4000) |
@@ -338,10 +344,12 @@ response = await simple_llm_client.chat_completion(
 | `backend/app/utils/card_metadata.py` | Field-level timestamp tracking for card entries |
 | `backend/app/models/schemas.py` | Pydantic models |
 | `backend/app/config/core_truths.py` | Universal principles for all personas (non-clinical AI companion) |
+| `backend/app/config/game_constants.py` | Game constants (crop types, growth stages, harvest yields) |
 | `backend/data/personas/*.json` | Persona definitions (who_you_are, your_vibe, your_worldview) |
 | `backend/scripts/seed_personas.py` | Persona JSON → DB sync script (supports is_hidden) |
 | `backend/migrations/005_add_hidden_flag.py` | Add is_hidden column for Easter egg counselors |
 | `backend/migrations/008_add_custom_advisors.py` | Custom advisors support (client_id, is_custom, performance_metrics) |
+| `backend/migrations/009_farm_tables.py` | Farm tables (crops, plantings, harvests) |
  | `backend/schema.sql` | Database schema |
  | `backend/pytest.ini` | Pytest configuration (asyncio, markers, test discovery, coverage) |
  | `backend/railway.json` | Railway configuration (volume mount path, deployment settings) |
@@ -360,6 +368,10 @@ response = await simple_llm_client.chat_completion(
 | `gameapy-web/src/screens/ChatScreen.tsx` | Chat interface (UI complete, with polish) ✅ |
 | `gameapy-web/src/screens/CardInventoryModal.tsx` | Card inventory modal with Advisor tab (complete with edit) ✅ |
 | `gameapy-web/src/screens/GuideScreen.tsx` | Organic card creation flow ✅ |
+| `gameapy-web/src/components/farm/FarmTab.tsx` | Farm minigame UI component ✅ |
+| `gameapy-web/src/components/farm/FarmTab.css` | Farm tab styles |
+| `gameapy-web/src/contexts/FarmContext.tsx` | Farm state management ✅ |
+| `gameapy-web/public/farm-assets/` | Crop and seed image assets |
 | `gameapy-web/src/components/ui/button.tsx` | Button component with GBA styling |
 | `gameapy-web/src/components/counselor/CounselorCard.tsx` | Counselor card component |
  | `gameapy-web/src/components/counselor/CounselorInfoModal.tsx` | Counselor details modal with counselor-specific colors ✅ |
@@ -386,6 +398,8 @@ response = await simple_llm_client.chat_completion(
  | `backend/tests/test_e2e_flows.py` | E2E flow tests | 6 tests ✅ |
 | `backend/tests/test_llm.py` | Real LLM integration tests | 3 tests ✅ |
 | `backend/tests/test_custom_counselors.py` | Custom advisors test suite | 19 tests ✅ |
+| `backend/tests/test_api_farm.py` | Farm API tests | - |
+| `backend/tests/test_database_farm.py` | Farm database tests | - |
 
 ---
 
@@ -434,7 +448,10 @@ response = await simple_llm_client.chat_completion(
   - Error: `{"type": "error", "error": "..."}`
 
 **Farm** (`/api/v1/farm/*`):
-- All endpoints available but hidden from main flow (optional)
+- `GET /status` - Get farm status (planted crops, growth stages, harvest ready)
+- `POST /plant` - Plant a crop at a specific grid position
+- `POST /harvest` - Harvest a crop at a specific grid position
+- Supported crops: potato, tomato, corn, cauliflower, parsnip
 
 ---
 
@@ -488,7 +505,7 @@ pytest tests/ --cov=app --cov-report=html
 
 ### Test Results
 
-**All 89 tests passing** (100% pass rate):
+**All tests passing** (100% pass rate):
 - Database tests: 20 tests ✅
 - Entity detector tests: 8 tests ✅
 - Context assembler tests: 6 tests ✅
@@ -499,6 +516,9 @@ pytest tests/ --cov=app --cov-report=html
 - Session analyzer tests: 5 tests ✅
 - E2E flow tests: 6 tests ✅
 - LLM integration tests: 3 tests ✅
+- Custom counselors tests: 19 tests ✅
+- Farm API tests: ✅
+- Farm database tests: ✅
 
 See `PHASE7_TEST_FIXES_SUMMARY.md` for full details on test infrastructure.
 
