@@ -180,24 +180,33 @@ TRANSCRIPT:
 ---
 {formatted_transcript}
 
-EXISTING CARDS:
+EXISTING CARDS (check these to avoid repetition):
 ---
 {existing_cards_summary}
 
-Output ONLY valid JSON proposing updates and new cards:
+CRITICAL RULES:
+1. BE CONCISE: Max 1-2 short sentences per field value. No verbose descriptions.
+2. NO REPETITION: Check EXISTING CARDS above. Do NOT propose updates for content already present.
+3. CARD TYPE SELECTION:
+   - SELF CARD (type="self"): Default for user's own feelings, behaviors, goals, patterns, reactions to situations
+   - CHARACTER CARD (type="character"): ONLY when a specific person's NAME is explicitly mentioned in the transcript
+   - WORLD EVENT (type="world"): ONLY for major life milestones (job change, move, loss, achievement)
+4. GUARDRAIL: If no person's name is mentioned in the transcript, do NOT update or create character cards.
+5. CONFIDENCE: Only propose updates if genuinely confident (≥ 0.7). If uncertain, skip.
+
+Output ONLY valid JSON:
 {{
-  "confidence": 0.0-1.0,  // Batch-level confidence
+  "confidence": 0.0-1.0,
   "updates": [
     {{
       "card_id": 12,
-      "card_type": "character|self|world",
+      "card_type": "self|character|world",
       "updates": [
         {{
-          "field": "personality|patterns|key_events|user_feelings|key_array|description|traits|interests|values",
+          "field": "personality|patterns|key_events|traits|interests|values|description",
           "action": "merge|append|replace",
           "value": "...",
-          "reason": "...",
-          "confidence": 0.0-1.0  // Per-field confidence
+          "confidence": 0.0-1.0
         }}
       ]
     }}
@@ -206,23 +215,15 @@ Output ONLY valid JSON proposing updates and new cards:
     {{
       "card_type": "character",
       "name": "Name of person",
-      "relationship_type": "family|friend|partner|coworker|other",
-      "relationship_label": "Optional custom label",
-      "personality": "Optional short description",
-      "traits": ["optional", "list"],
-      "patterns": []
+      "relationship_type": "family|friend|partner|coworker|other"
     }}
   ]
 }}
 
-Rules:
-- Only propose updates if you're confident (confidence ≥ 0.7 per field)
-- For personality: use "merge" action
-- For patterns: use "append" action
-- For arrays: use "append" action
-- For simple fields: use "replace" action
-- If batch confidence < 0.5, return empty updates array and empty new_cards
-- Only include new_cards if the person is new (no existing character card)
+Action rules:
+- personality: "merge" (combine with existing)
+- patterns/arrays: "append" (add new items only)
+- simple fields: "replace"
 
 Do not include any text outside of JSON."""
 
@@ -304,30 +305,48 @@ Do not include any text outside of JSON."""
         return created_ids
 
     def _get_existing_cards_summary(self, client_id: int) -> str:
-        """Get summary of existing cards for context."""
+        """Get full content of existing cards for deduplication checking."""
         summary_lines = []
 
         self_card = db.get_self_card(client_id)
         if self_card:
             card_json = json.loads(self_card['card_json']) if isinstance(self_card['card_json'], str) else self_card['card_json']
             card_json = db.normalize_self_card_payload(card_json)
-            summary_lines.append(f"Self Card (id={self_card['id']}):")
-            summary_lines.append(f"  Personality: {card_json.get('personality', 'N/A')}")
-            summary_lines.append(f"  Traits: {card_json.get('traits', [])}")
+            summary_lines.append(f"SELF CARD (id={self_card['id']}):")
+            if card_json.get('personality'):
+                summary_lines.append(f"  Personality: {card_json['personality']}")
+            if card_json.get('traits'):
+                summary_lines.append(f"  Traits: {card_json['traits']}")
+            if card_json.get('interests'):
+                summary_lines.append(f"  Interests: {card_json['interests']}")
+            if card_json.get('values'):
+                summary_lines.append(f"  Values: {card_json['values']}")
+            if card_json.get('patterns'):
+                patterns = [p.get('pattern', str(p)) if isinstance(p, dict) else str(p) for p in card_json['patterns']]
+                summary_lines.append(f"  Patterns: {patterns}")
+            if card_json.get('goals'):
+                goals = [g.get('goal', str(g)) if isinstance(g, dict) else str(g) for g in card_json['goals']]
+                summary_lines.append(f"  Goals: {goals}")
             summary_lines.append("")
 
         char_cards = db.get_character_cards(client_id)
         for card in char_cards:
             card_json = card['card']
-            summary_lines.append(f"Character Card '{card['card_name']}' (id={card['id']}):")
-            summary_lines.append(f"  Personality: {card_json.get('personality', 'N/A')}")
-            summary_lines.append(f"  Patterns: {len(card_json.get('patterns', []))} patterns")
+            summary_lines.append(f"CHARACTER '{card['card_name']}' (id={card['id']}):")
+            if card_json.get('personality'):
+                summary_lines.append(f"  Personality: {card_json['personality']}")
+            if card_json.get('patterns'):
+                patterns = [p.get('pattern', str(p)) if isinstance(p, dict) else str(p) for p in card_json['patterns']]
+                summary_lines.append(f"  Patterns: {patterns}")
+            if card_json.get('key_events'):
+                events = [e.get('event', str(e)) if isinstance(e, dict) else str(e) for e in card_json['key_events']]
+                summary_lines.append(f"  Key Events: {events}")
             summary_lines.append("")
 
         world_events = db.get_world_events(client_id)
         for event in world_events:
-            summary_lines.append(f"World Event '{event['title']}' (id={event['id']}):")
-            summary_lines.append(f"  Description: {event['description'][:100]}...")
+            summary_lines.append(f"WORLD EVENT '{event['title']}' (id={event['id']}):")
+            summary_lines.append(f"  Description: {event['description'][:200]}")
             summary_lines.append("")
 
         return "\n".join(summary_lines)

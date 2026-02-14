@@ -2619,6 +2619,148 @@ class Database:
                 'last_recovered_at': row['last_recovery_at']
             }
 
+    # ============================================================
+    # FRIENDSHIP LEVEL METHODS
+    # ============================================================
+
+    LEVEL_THRESHOLDS = [0, 10, 25, 50, 100, 200]
+
+    def get_friendship_level(self, client_id: int, counselor_id: int) -> Dict:
+        """
+        Get friendship level for a client-counselor pair.
+        Returns level with decay applied if needed.
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, level, points, last_interaction, last_analyzed_session, created_at, updated_at
+                FROM friendship_levels
+                WHERE client_id = %s AND counselor_id = %s
+            """, (client_id, counselor_id))
+            row = cursor.fetchone()
+            
+            if not row:
+                return {
+                    'level': 0,
+                    'points': 0,
+                    'last_interaction': None,
+                    'last_analyzed_session': None,
+                    'exists': False
+                }
+            
+            result = dict(row)
+            result['exists'] = True
+            return result
+
+    def get_all_friendship_levels(self, client_id: int) -> List[Dict]:
+        """Get all friendship levels for a client."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT fl.id, fl.client_id, fl.counselor_id, fl.level, fl.points,
+                       fl.last_interaction, fl.last_analyzed_session, fl.created_at, fl.updated_at,
+                       cp.name as counselor_name
+                FROM friendship_levels fl
+                JOIN counselor_profiles cp ON fl.counselor_id = cp.id
+                WHERE fl.client_id = %s
+                ORDER BY fl.level DESC, fl.last_interaction DESC NULLS LAST
+            """, (client_id,))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def upsert_friendship_level(self, client_id: int, counselor_id: int, 
+                                 points_delta: int = 0, session_id: Optional[int] = None) -> Dict:
+        """
+        Create or update friendship level.
+        Automatically calculates level from points using exponential thresholds.
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            existing = self.get_friendship_level(client_id, counselor_id)
+            
+            if not existing['exists']:
+                new_points = max(0, points_delta)
+                level = self._calculate_level(new_points)
+                cursor.execute("""
+                    INSERT INTO friendship_levels (client_id, counselor_id, level, points, 
+                                                   last_interaction, last_analyzed_session)
+                    VALUES (%s, %s, %s, %s, NOW(), %s)
+                    RETURNING id, level, points, last_interaction, last_analyzed_session
+                """, (client_id, counselor_id, level, new_points, session_id))
+                result = cursor.fetchone()
+                return dict(result) if result else {'level': 0, 'points': 0}
+            
+            new_points = max(0, existing['points'] + points_delta)
+            new_level = self._calculate_level(new_points)
+            
+            cursor.execute("""
+                UPDATE friendship_levels
+                SET level = %s, points = %s, last_interaction = NOW(),
+                    last_analyzed_session = COALESCE(%s, last_analyzed_session), updated_at = NOW()
+                WHERE client_id = %s AND counselor_id = %s
+                RETURNING id, level, points, last_interaction, last_analyzed_session
+            """, (new_level, new_points, session_id, client_id, counselor_id))
+            
+            result = cursor.fetchone()
+            return dict(result) if result else existing
+
+    def _calculate_level(self, points: int) -> int:
+        """Calculate level from points using exponential thresholds."""
+        for i, threshold in enumerate(self.LEVEL_THRESHOLDS):
+            if points < threshold:
+                return max(0, i - 1)
+        return 5
+
+    def decay_friendship_levels(self, days_inactive: int = 7, decay_amount: int = 1) -> int:
+        """
+        Decay friendship levels for inactive relationships.
+        Called by daily scheduled job.
+        
+        Args:
+            days_inactive: Days without interaction before decay starts
+            decay_amount: Levels to decay per week of inactivity
+        
+        Returns:
+            Number of rows affected
+        """
+        from datetime import timedelta
+        cutoff_date = datetime.now() - timedelta(days=days_inactive)
+        
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                UPDATE friendship_levels
+                SET level = GREATEST(0, level - %s),
+                    points = GREATEST(0, points - 20),
+                    updated_at = NOW()
+                WHERE last_interaction < %s AND level > 0
+            """, (decay_amount, cutoff_date))
+            
+            affected = cursor.rowcount
+            if affected > 0:
+                logger.info(f"[FRIENDSHIP] Decayed {affected} inactive friendship levels")
+            
+            return affected
+
+    def update_last_interaction(self, client_id: int, counselor_id: int) -> bool:
+        """Update last_interaction timestamp when user chats with counselor."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            existing = self.get_friendship_level(client_id, counselor_id)
+            if not existing['exists']:
+                self.upsert_friendship_level(client_id, counselor_id, points_delta=0)
+                return True
+            
+            cursor.execute("""
+                UPDATE friendship_levels
+                SET last_interaction = NOW(), updated_at = NOW()
+                WHERE client_id = %s AND counselor_id = %s
+            """, (client_id, counselor_id))
+            
+            return cursor.rowcount > 0
+
 
 # Global database instance - initialized at module load time
 db = Database()

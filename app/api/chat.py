@@ -11,6 +11,7 @@ from app.services.simple_llm_fixed import simple_llm_client
 from app.services.insight_extractor import insight_extractor
 from app.services.entity_detector import entity_detector
 from app.services.context_assembler import context_assembler
+from app.services.friendship_analyzer import friendship_analyzer
 from app.core.config import settings
 from app.config.core_truths import get_core_truths
 from app.utils.card_metadata import CardMetadata
@@ -182,8 +183,8 @@ def _format_counselor_examples(examples: List[Dict]) -> str:
     )
 
 
-def _build_counselor_system_prompt(counselor_data: Dict) -> str:
-    """Build system prompt from counselor profile data."""
+def _build_counselor_system_prompt(counselor_data: Dict, client_id: int = 0, counselor_id: int = 0) -> str:
+    """Build system prompt from counselor profile data with friendship context."""
     prompt = get_core_truths()
     prompt += "\n\n---\n\n"
     
@@ -202,6 +203,13 @@ def _build_counselor_system_prompt(counselor_data: Dict) -> str:
     
     if your_worldview:
         prompt += f"Your worldview: {your_worldview}\n\n"
+    
+    if client_id and counselor_id:
+        friendship = db.get_friendship_level(client_id, counselor_id)
+        db.update_last_interaction(client_id, counselor_id)
+        friendship_prompt = friendship_analyzer.get_friendship_prompt(friendship['level'])
+        prompt += friendship_prompt
+        prompt += "\n\n"
     
     if session_template:
         prompt += f"Session opening: {session_template}\n\n"
@@ -290,7 +298,11 @@ async def chat_with_counselor(
         
         context_str = _format_context_for_llm(context)
         
-        system_prompt_content = _build_counselor_system_prompt(counselor_data)
+        system_prompt_content = _build_counselor_system_prompt(
+            counselor_data, 
+            client_id=client_id, 
+            counselor_id=counselor_id
+        )
         
         llm_messages = [
             {"role": "system", "content": f"{system_prompt_content}\n\n---\n\nContext about this user:\n{context_str}"}

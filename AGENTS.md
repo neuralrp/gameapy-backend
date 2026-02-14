@@ -1,6 +1,6 @@
 # Gameapy - Agent Quick Reference
 
-**Version**: 3.9.0 | **Last Updated**: 2026-02-13 (Farm Test Suite Complete)
+**Version**: 4.0.0 | **Last Updated**: 2026-02-14 (Friendship System)
 
 ---
 
@@ -20,13 +20,14 @@ gameapy-backend/          # Backend repo
 ├── app/
 │   ├── api/              # FastAPI route handlers
 │   ├── db/               # Database operations (database.py)
-│   ├── services/         # LLM services (card_generator, guide_system, card_updater)
+│   ├── services/         # LLM services (card_generator, guide_system, card_updater, friendship_analyzer)
 │   ├── models/           # Pydantic schemas
 │   ├── utils/            # Utilities (card_metadata)
 │   └── config/           # Core truths, persona configs
 ├── data/personas/        # Persona JSON definitions
 ├── tests/                # Pytest test suite
 ├── scripts/              # Utility scripts (seed_personas)
+├── migrations/           # Database migrations (001-013)
 ├── main.py               # FastAPI app entry point
 ├── requirements.txt      # Python dependencies
 ├── schema.sql            # Database schema
@@ -53,12 +54,12 @@ gameapy-web/              # Web frontend repo
 
 **Completed Backend**: Phases 1-7 (All backend features + complete test infrastructure)
 **Completed Frontend**: Phases 0-6 (Web MVP complete + deployed to Vercel)
-**Latest Update**: Garden Minigame (Phase 9) - Farm backend with crop planting, harvesting, and growth tracking. Farm API endpoints, database operations, and tests added.
+**Latest Update**: Friendship System (Phase 10) - 5-heart relationship levels with LLM-based analysis, daily decay, and friendship-aware prompts
 **Production Deploy**: Backend on Railway, Frontend on Vercel
 **Status**: Live at https://gameapy-web.vercel.app
 
 ### What's Working (Backend)
-- Database: self_cards, character_cards, world_events, entity_mentions tables (with is_pinned columns)
+- Database: self_cards, character_cards, world_events, entity_mentions, friendship_levels tables (with is_pinned columns)
 - Card Generator: Plain text → structured JSON (with fallback)
 - Organic Guide System: Conversational onboarding with card creation on-demand
 - Pin System: "Keep this in mind" cards always load in context
@@ -94,6 +95,13 @@ gameapy-web/              # Web frontend repo
   - Planting and harvesting operations
   - Per-client farm state tracking
   - Growth stage progression system
+- **Friendship System**: Relationship depth tracking (Phase 10)
+  - 5-heart friendship levels per client-counselor pair
+  - LLM analyzes end-of-session for emotional intimacy, trust signals
+  - Exponential leveling (harder to advance at higher levels)
+  - Daily decay via APScheduler (inactive friendships lose hearts)
+  - Friendship-aware system prompts (tone varies by relationship depth)
+  - HeartRating UI component on counselor selection screen
 
 ### What's Working (Frontend - Web MVP)
 - **Phase 0 Complete**: React + Vite + TypeScript project initialized
@@ -232,12 +240,15 @@ FastAPI Backend
     ├─ Cards API (/api/v1/cards/*)
     ├─ Guide API (/api/v1/guide/*)
     ├─ Chat API (/api/v1/chat/*)
-    └─ Session Analyzer (/api/v1/sessions/{id}/analyze)
+    ├─ Session Analyzer (/api/v1/sessions/{id}/analyze)
+    ├─ Friendship API (/api/v1/friendship/*)
+    └─ Farm API (/api/v1/farm/*)
     ↓
-SQLite Database
+PostgreSQL Database
     ├─ self_cards (one per client)
     ├─ character_cards (people in user's life)
     ├─ world_events (life milestones, NeuralRP-style)
+    ├─ friendship_levels (relationship depth tracking)
     └─ entity_mentions (tracking)
 ```
 
@@ -298,6 +309,7 @@ response = await simple_llm_client.chat_completion(
 | 7 | ✅ | New Test Coverage (DB, API, E2E) - 89/89 tests passing (100%), 68% coverage |
 | 8 | ❌ | Flutter UI Development (ARCHIVED - replaced by web MVP) |
 | 9 | ✅ | Garden Minigame - Farm backend with crop planting/harvesting, database tables, API endpoints, and tests |
+| 10 | ✅ | Friendship System - 5-heart levels, LLM analysis, daily decay, friendship-aware prompts |
 
 ### Frontend Phases (Web MVP)
 
@@ -329,15 +341,17 @@ response = await simple_llm_client.chat_completion(
 
 | File | Purpose |
 |------|---------|
-| `backend/main.py` | FastAPI app, route registration |
+| `backend/main.py` | FastAPI app, route registration, APScheduler |
 | `backend/app/db/database.py` | All DB operations (650+ lines) |
  | `backend/app/api/cards.py` | Card management endpoints |
 | `backend/app/api/custom_counselors.py` | Custom advisors API endpoints (CRUD) |
 | `backend/app/api/gameapy.py` | Farm minigame API endpoints (planting, harvesting, status) |
 | `backend/app/api/guide.py` | Guide onboarding endpoints |
 | `backend/app/api/session_analyzer.py` | Session analysis endpoint |
+| `backend/app/api/friendship.py` | Friendship level API endpoints |
 | `backend/app/services/card_generator.py` | LLM card generation (max_tokens=4000) |
 | `backend/app/services/advisor_generator.py` | LLM custom advisor persona generation |
+| `backend/app/services/friendship_analyzer.py` | LLM friendship level analysis |
 | `backend/app/services/guide_system.py` | Organic guide conversation system |
 | `backend/app/services/card_updater.py` | Auto-update service |
 | `backend/app/services/simple_llm_fixed.py` | HTTP client for OpenRouter API |
@@ -350,6 +364,7 @@ response = await simple_llm_client.chat_completion(
 | `backend/migrations/005_add_hidden_flag.py` | Add is_hidden column for Easter egg counselors |
 | `backend/migrations/008_add_custom_advisors.py` | Custom advisors support (client_id, is_custom, performance_metrics) |
 | `backend/migrations/012_farm_consolidated.py` | Farm tables (planted_crops with watered_stages, growth_stage) + farm_plots, animals, decorations |
+| `backend/migrations/013_friendship_levels.py` | Friendship levels table |
  | `backend/schema.sql` | Database schema |
  | `backend/pytest.ini` | Pytest configuration (asyncio, markers, test discovery, coverage) |
  | `backend/railway.json` | Railway configuration (volume mount path, deployment settings) |
@@ -363,13 +378,14 @@ response = await simple_llm_client.chat_completion(
 | `gameapy-web/src/index.css` | Global styles + Tailwind v4 |
 | `gameapy-web/src/contexts/AppContext.tsx` | Global state (client ID, counselor, inventory) |
 | `gameapy-web/src/services/api.ts` | HTTP client for backend API |
- | `gameapy-web/src/screens/CounselorSelection.tsx` | Counselor selection screen with creator button ✅ |
+ | `gameapy-web/src/screens/CounselorSelection.tsx` | Counselor selection screen with hearts display ✅ |
 | `gameapy-web/src/screens/AdvisorCreatorScreen.tsx` | 3-step custom advisor creation form ✅ |
-| `gameapy-web/src/screens/ChatScreen.tsx` | Chat interface (UI complete, with polish) ✅ |
+| `gameapy-web/src/screens/ChatScreen.tsx` | Chat interface with friendship analysis ✅ |
 | `gameapy-web/src/screens/CardInventoryModal.tsx` | Card inventory modal with Advisor tab (complete with edit) ✅ |
 | `gameapy-web/src/screens/GuideScreen.tsx` | Organic card creation flow ✅ |
 | `gameapy-web/src/components/farm/FarmTab.tsx` | Farm minigame UI component ✅ |
 | `gameapy-web/src/components/farm/FarmTab.css` | Farm tab styles |
+| `gameapy-web/src/components/ui/HeartRating.tsx` | 5-heart rating display component ✅ |
 | `gameapy-web/src/contexts/FarmContext.tsx` | Farm state management ✅ |
 | `gameapy-web/public/farm-assets/` | Crop and seed image assets |
 | `gameapy-web/src/components/ui/button.tsx` | Button component with GBA styling |
@@ -454,6 +470,12 @@ response = await simple_llm_client.chat_completion(
 - `POST /plant` - Plant a crop at a specific grid position
 - `POST /harvest` - Harvest a crop at a specific grid position
 - Supported crops: potato, tomato, corn, cauliflower, parsnip
+
+**Friendship** (`/api/v1/friendship`):
+- `GET /{counselor_id}` - Get friendship level with a counselor
+- `GET /` - Get all friendship levels for current user
+- `POST /analyze-session` - Analyze session for friendship growth (called at end of session)
+- `POST /decay` - Run daily decay job (internal/scheduled)
 
 ---
 

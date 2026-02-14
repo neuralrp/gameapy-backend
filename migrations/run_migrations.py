@@ -33,6 +33,12 @@ MIGRATIONS = [
         "name": "farm_consolidated",
         "module": "migrations.012_farm_consolidated",
         "function": "run_migration"
+    },
+    {
+        "id": "013",
+        "name": "friendship_levels",
+        "module": "migrations.013_friendship_levels",
+        "function": "run_migration"
     }
 ]
 

@@ -52,6 +52,7 @@ from app.api.chat import router as chat_router
 from app.api.cards import router as cards_router
 from app.api.session_analyzer import router as session_analyzer_router
 from app.api.custom_counselors import router as custom_counselors_router
+from app.api.friendship import router as friendship_router
 from app.auth import router as auth_router
 
 # Configure CORS for Flutter development
@@ -110,6 +111,41 @@ app.include_router(cards_router)
 app.include_router(session_analyzer_router)
 app.include_router(auth_router)
 app.include_router(custom_counselors_router)
+app.include_router(friendship_router)
+
+# Setup APScheduler for daily friendship decay
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+scheduler = AsyncIOScheduler()
+
+async def run_friendship_decay():
+    """Daily job to decay inactive friendships."""
+    logger.info("[SCHEDULER] Running friendship decay job...")
+    try:
+        affected = db.decay_friendship_levels(days_inactive=7, decay_amount=1)
+        logger.info(f"[SCHEDULER] Friendship decay complete: {affected} rows affected")
+    except Exception as e:
+        logger.error(f"[SCHEDULER] Friendship decay error: {e}")
+
+@app.on_event("startup")
+async def startup_event():
+    """Start the scheduler on app startup."""
+    scheduler.add_job(
+        run_friendship_decay,
+        CronTrigger(hour=3, minute=0, timezone="UTC"),
+        id="friendship_decay",
+        name="Daily friendship level decay",
+        replace_existing=True
+    )
+    scheduler.start()
+    logger.info("[SCHEDULER] APScheduler started - friendship decay job scheduled for 3 AM UTC")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Shutdown the scheduler on app shutdown."""
+    scheduler.shutdown()
+    logger.info("[SCHEDULER] APScheduler shutdown complete")
 
 @app.get("/")
 async def root():
